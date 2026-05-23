@@ -1,13 +1,15 @@
-import 'package:euro_side/modules/Auth/provider/auth_provider.dart';
-import 'package:euro_side/modules/Auth/view/set_password.dart';
-import 'package:euro_side/screens/nav_bar/main_navigation_screen.dart';
+import 'package:euroside/modules/Auth/provider/auth_provider.dart';
+import 'package:euroside/modules/Auth/view/set_password.dart';
+import 'package:euroside/screens/nav_bar/main_navigation_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax/iconsax.dart';
 
 class SignInScreen extends ConsumerStatefulWidget {
-  const SignInScreen({super.key});
+  final bool showLogoutMessage;
+
+  const SignInScreen({super.key, this.showLogoutMessage = false});
 
   @override
   ConsumerState<SignInScreen> createState() => _SignInScreenState();
@@ -17,7 +19,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
-  bool _rememberMe = false;
 
   static const Color _accentBlue = Color(0xFF003DA5);
   static const Color _pageBg = Color(0xFFF5F6FA);
@@ -69,6 +70,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     Future.microtask(() {
       ref.read(authControllerProvider.notifier).clearMessages();
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.showLogoutMessage) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: const Text("Logout successful"),
+          ),
+        );
+      }
+    });
   }
 
   @override
@@ -98,13 +109,13 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     }
 
     final authController = ref.read(authControllerProvider.notifier);
-    final isFirstLogin = await authController.login(email, password);
+    final shouldSetPassword = await authController.login(email, password);
     if (!mounted) return;
     final authState = ref.read(authControllerProvider);
     if (authState.error == null) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => isFirstLogin
+          builder: (_) => shouldSetPassword
               ? SetPasswordScreen(email: email)
               : const NavigationScreen(),
         ),
@@ -168,7 +179,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               // ── Title & subtitle ──────────────────────────────────────
               Center(
                 child: Text(
-                  'Sign in',
+                  'Login',
                   style: GoogleFonts.inter(
                     fontSize: 26,
                     fontWeight: FontWeight.w700,
@@ -179,7 +190,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               const SizedBox(height: 6),
               Center(
                 child: Text(
-                  'Sign in to your Euroside enterprise\naccount to continue',
+                  'Login to your Euroside enterprise\naccount to continue',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.inter(
                     fontSize: 13,
@@ -265,66 +276,65 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 ),
               ),
 
-              const SizedBox(height: 14),
+              const SizedBox(height: 20),
 
               // ── Remember me + Forgot password ─────────────────────────
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: Checkbox(
-                          value: _rememberMe,
-                          onChanged: (v) =>
-                              setState(() => _rememberMe = v ?? false),
-                          activeColor: _accentBlue,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          side: const BorderSide(
-                            color: Color(0xFFCDD1DA),
-                            width: 1.5,
-                          ),
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Remember me',
-                        style: GoogleFonts.inter(
-                          fontSize: 13,
-                          color: Colors.black54,
-                        ),
-                      ),
-                    ],
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => SetPasswordScreen(
-                            email: _emailController.text.trim(),
-                          ),
-                          // builder: (_) => NavigationScreen(),
-                        ),
-                      );
-                    },
-                    child: Text(
-                      'Forgot Password?',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: _accentBlue,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
+              // Row(
+              //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              //   children: [
+              //     Row(
+              //       children: [
+              //         SizedBox(
+              //           width: 20,
+              //           height: 20,
+              //           child: Checkbox(
+              //             value: _rememberMe,
+              //             onChanged: (v) =>
+              //                 setState(() => _rememberMe = v ?? false),
+              //             activeColor: _accentBlue,
+              //             shape: RoundedRectangleBorder(
+              //               borderRadius: BorderRadius.circular(4),
+              //             ),
+              //             side: const BorderSide(
+              //               color: Color(0xFFCDD1DA),
+              //               width: 1.5,
+              //             ),
+              //             materialTapTargetSize:
+              //                 MaterialTapTargetSize.shrinkWrap,
+              //           ),
+              //         ),
+              //         const SizedBox(width: 8),
+              //         Text(
+              //           'Remember me',
+              //           style: GoogleFonts.inter(
+              //             fontSize: 13,
+              //             color: Colors.black54,
+              //           ),
+              //         ),
+              //       ],
+              //     ),
+              //     GestureDetector(
+              //       onTap: () {
+              //         Navigator.of(context).push(
+              //           MaterialPageRoute(
+              //             builder: (_) => SetPasswordScreen(
+              //               email: _emailController.text.trim(),
+              //             ),
+              //             // builder: (_) => NavigationScreen(),
+              //           ),
+              //         );
+              //       },
+              //       child: Text(
+              //         'Forgot Password?',
+              //         style: GoogleFonts.inter(
+              //           fontSize: 13,
+              //           fontWeight: FontWeight.w500,
+              //           color: _accentBlue,
+              //         ),
+              //       ),
+              //     ),
+              //   ],
+              // ),
               const SizedBox(height: 22),
 
               // ── Success Message ────────────────────────────────────────
@@ -480,7 +490,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                           ),
                         )
                       : Text(
-                          'Sign in',
+                          'Login',
                           style: GoogleFonts.inter(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,

@@ -1,8 +1,8 @@
-import 'package:euro_side/modules/Auth/view/auth_view.dart';
-import 'package:euro_side/modules/Auth/view/set_password.dart';
-import 'package:euro_side/network/app_start_controller.dart';
-import 'package:euro_side/network/app_start_provider.dart';
-import 'package:euro_side/screens/nav_bar/main_navigation_screen.dart';
+import 'package:euroside/modules/Auth/view/auth_view.dart';
+import 'package:euroside/modules/Auth/view/set_password.dart';
+import 'package:euroside/network/app_start_controller.dart';
+import 'package:euroside/network/app_start_provider.dart';
+import 'package:euroside/screens/nav_bar/main_navigation_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';

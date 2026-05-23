@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:euro_side/modules/Auth/provider/auth_provider.dart';
-import 'package:euro_side/modules/Auth/view/auth_view.dart';
+import 'package:euroside/modules/Auth/provider/auth_provider.dart';
+import 'package:euroside/modules/Auth/view/auth_view.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../provider/profile_provider.dart';
 
 class ProfileView extends ConsumerStatefulWidget {
@@ -13,12 +15,15 @@ class ProfileView extends ConsumerStatefulWidget {
 }
 
 class _ProfileViewState extends ConsumerState<ProfileView> {
+  bool isLoggingOut = false;
   @override
   void initState() {
     super.initState();
-    Future.microtask(
-      () => ref.read(profileControllerProvider.notifier).getProfile(),
-    );
+    Future.microtask(() async {
+      await ref.read(profileControllerProvider.notifier).getProfile();
+
+      await ref.read(profileControllerProvider.notifier).checkLocationStatus();
+    });
   }
 
   @override
@@ -168,19 +173,145 @@ class _ProfileViewState extends ConsumerState<ProfileView> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () async {
-                        await ref
-                            .read(authControllerProvider.notifier)
-                            .logout();
-                        if (!mounted) return;
+                      onPressed: isLoggingOut
+                          ? null
+                          : () async {
+                              final prefs =
+                                  await SharedPreferences.getInstance();
 
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(
-                            builder: (_) => const SignInScreen(),
-                          ),
-                          (route) => false,
-                        );
-                      },
+                              final isClockedIn =
+                                  prefs.getBool("isClockedIn") ?? false;
+
+                              /// 🚫 BLOCK LOGOUT
+                              if (isClockedIn) {
+                                if (!mounted) return;
+
+                                Fluttertoast.showToast(
+                                  msg:
+                                      "Please clock out from your current project before logging out.",
+                                  gravity: ToastGravity.TOP,
+                                  toastLength: Toast.LENGTH_SHORT,
+                                  backgroundColor: const Color(0xFF1F2937),
+                                  textColor: Colors.white,
+                                  fontSize: 14,
+                                );
+
+                                return;
+                              }
+
+                              /// ✅ ALLOW LOGOUT
+
+                              setState(() {
+                                isLoggingOut = true;
+                              });
+
+                              await ref
+                                  .read(authControllerProvider.notifier)
+                                  .logout();
+
+                              if (!mounted) return;
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  duration: const Duration(milliseconds: 1800),
+                                  behavior: SnackBarBehavior.floating,
+                                  elevation: 0,
+                                  backgroundColor: Colors.transparent,
+                                  margin: const EdgeInsets.all(16),
+
+                                  content: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 14,
+                                    ),
+
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF111827),
+                                      borderRadius: BorderRadius.circular(18),
+
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.12),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 44,
+                                          height: 44,
+
+                                          decoration: BoxDecoration(
+                                            color: Colors.green.withOpacity(
+                                              .12,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+
+                                          child: const Icon(
+                                            Icons.check_circle_rounded,
+                                            color: Colors.greenAccent,
+                                            size: 24,
+                                          ),
+                                        ),
+
+                                        const SizedBox(width: 14),
+
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+
+                                            children: [
+                                              Text(
+                                                "Logout Successful",
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+
+                                              const SizedBox(height: 4),
+
+                                              Text(
+                                                "You have been securely logged out.",
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 12,
+                                                  height: 1.4,
+                                                  color: Colors.white
+                                                      .withOpacity(0.75),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+
+                              await Future.delayed(
+                                const Duration(milliseconds: 1200),
+                              );
+
+                              if (!mounted) return;
+                              Navigator.of(context).pushAndRemoveUntil(
+                                MaterialPageRoute(
+                                  builder: (_) => const SignInScreen(
+                                    showLogoutMessage: true,
+                                  ),
+                                ),
+                                (route) => false,
+                              );
+                            },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color.fromARGB(255, 76, 14, 221),
                         padding: const EdgeInsets.symmetric(vertical: 14),

@@ -40,10 +40,37 @@ class JobService {
   }
 
   /// ✅ COMMON VALIDATION
-  static void _validateResponse(
-    Map<String, dynamic>? response, {
-    String? key,
-  }) {
+  static Future<Map<String, dynamic>> createJob({
+    required int projectId,
+    required int formId,
+    required String reference,
+    required String formName,
+    required String siteContact,
+    required String instructions,
+  }) async {
+    try {
+      final response =
+          await ApiClient.post(ApiEndpoints.createProjectJob(projectId), {
+            "reference": reference,
+            "form_id": formId,
+            "form_name": formName,
+            "site_contact": siteContact,
+            "instructions": instructions,
+          });
+
+      _validateResponse(response, key: "job");
+
+      debugPrint("CREATE JOB RESPONSE: $response");
+
+      return response;
+    } catch (e, stackTrace) {
+      debugPrint("CREATE JOB ERROR: $e");
+      debugPrint("STACKTRACE: $stackTrace");
+      rethrow;
+    }
+  }
+
+  static void _validateResponse(Map<String, dynamic>? response, {String? key}) {
     if (response == null) {
       throw Exception("Empty response from server");
     }

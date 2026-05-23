@@ -1,4 +1,4 @@
-import 'package:euro_side/modules/clock_out/controller/clock_out_controller.dart';
+import 'package:euroside/modules/clock_out/controller/clock_out_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../model/clock_out_model.dart';
 

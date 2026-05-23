@@ -3,8 +3,9 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
-import 'package:euro_side/network/api_endpoint.dart';
-import 'package:euro_side/services/token_services.dart';
+import 'package:euroside/network/api_endpoint.dart';
+import 'package:euroside/services/app_network_error_service.dart';
+import 'package:euroside/services/token_services.dart';
 import 'package:http/http.dart' as http;
 
 class ApiClient {
@@ -60,6 +61,13 @@ class ApiClient {
           return _handleResponse(retryResponse);
         }
       }
+      if (e is SocketException ||
+          e.toString().contains('SocketException') ||
+          e.toString().contains('Failed host lookup') ||
+          e.toString().contains('Connection timed out') ||
+          e.toString().contains('Network error')) {
+        AppNetworkErrorService.report('Network error. Please try again.');
+      }
       rethrow;
     }
   }
@@ -105,9 +113,11 @@ class ApiClient {
       return _handleResponse(response);
     } on TimeoutException catch (e) {
       print("❌ MULTIPART TIMEOUT ERROR: $e");
+      AppNetworkErrorService.report('Network error. Please try again.');
       throw Exception("Request timed out. Please try again.");
     } on SocketException catch (e) {
       print("❌ MULTIPART SOCKET ERROR: $e");
+      AppNetworkErrorService.report('Network error. Please try again.');
       throw Exception("Network error. Please try again.");
     } catch (e) {
       print("❌ MULTIPART ERROR: $e");
@@ -141,6 +151,13 @@ class ApiClient {
           return _handleResponse(retryResponse);
         }
       }
+      if (e is SocketException ||
+          e.toString().contains('SocketException') ||
+          e.toString().contains('Failed host lookup') ||
+          e.toString().contains('Connection timed out') ||
+          e.toString().contains('Network error')) {
+        AppNetworkErrorService.report('Network error. Please try again.');
+      }
       rethrow;
     }
   }
@@ -168,6 +185,13 @@ class ApiClient {
           return _handleResponse(retryResponse);
         }
       }
+      if (e is SocketException ||
+          e.toString().contains('SocketException') ||
+          e.toString().contains('Failed host lookup') ||
+          e.toString().contains('Connection timed out') ||
+          e.toString().contains('Network error')) {
+        AppNetworkErrorService.report('Network error. Please try again.');
+      }
       rethrow;
     }
   }
@@ -193,6 +217,13 @@ class ApiClient {
           return _handleResponse(retryResponse);
         }
       }
+      if (e is SocketException ||
+          e.toString().contains('SocketException') ||
+          e.toString().contains('Failed host lookup') ||
+          e.toString().contains('Connection timed out') ||
+          e.toString().contains('Network error')) {
+        AppNetworkErrorService.report('Network error. Please try again.');
+      }
       rethrow;
     }
   }
@@ -202,7 +233,16 @@ class ApiClient {
     print("📡 STATUS CODE: ${response.statusCode}");
     print("📡 RESPONSE BODY: ${response.body}");
 
-    final data = response.body.isNotEmpty ? jsonDecode(response.body) : {};
+    final body = response.body.trim();
+
+    if (body.startsWith('<!DOCTYPE html') ||
+        body.startsWith('<html') ||
+        body.startsWith('<HTML')) {
+      AppNetworkErrorService.report('Unexpected HTML response from server.');
+      throw Exception('Unexpected HTML response from server.');
+    }
+
+    final data = body.isNotEmpty ? jsonDecode(body) : {};
 
     /// 🔐 TOKEN EXPIRED
     if (response.statusCode == 401 && data["code"] == "token_not_valid") {
@@ -220,6 +260,7 @@ class ApiClient {
 
     /// ✅ SUCCESS
     if (response.statusCode == 200 || response.statusCode == 201) {
+      AppNetworkErrorService.clear();
       return data;
     }
 

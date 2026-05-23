@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:euro_side/network/api_endpoint.dart';
+import 'package:euroside/network/api_endpoint.dart';
 import '../network/api_client.dart';
 
 class ProfileService {

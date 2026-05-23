@@ -1,5 +1,5 @@
-import 'package:euro_side/network/api_endpoint.dart';
-import 'package:euro_side/services/token_services.dart';
+import 'package:euroside/network/api_endpoint.dart';
+import 'package:euroside/services/token_services.dart';
 
 import '../network/api_client.dart';
 

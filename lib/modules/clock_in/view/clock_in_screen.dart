@@ -1,9 +1,9 @@
-import 'package:euro_side/modules/clock_out/model/clock_out_model.dart';
-import 'package:euro_side/modules/clock_out/provider/clock_provider.dart';
-import 'package:euro_side/modules/job/view/job_screen.dart';
+import 'package:euroside/modules/all_projects/model/all_project_model.dart';
+import 'package:euroside/modules/all_projects/provider/all_project_provider.dart';
+import 'package:euroside/modules/clock_out/model/clock_out_model.dart';
+import 'package:euroside/modules/clock_out/provider/clock_provider.dart';
+import 'package:euroside/services/current_clock_session_service.dart';
 import 'package:flutter/material.dart';
-import 'package:euro_side/modules/projects/provider/project_provider.dart';
-import 'package:euro_side/modules/projects/model/project_model.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../provider/clock_in_provider.dart';
@@ -12,11 +12,13 @@ import 'dart:convert';
 class ClockInScreen extends ConsumerStatefulWidget {
   final int projectId;
   final String projectName;
+  final bool returnOnSuccess;
 
   const ClockInScreen({
     super.key,
     required this.projectId,
     required this.projectName,
+    this.returnOnSuccess = false,
   });
 
   @override
@@ -32,8 +34,7 @@ class _ClockInScreenState extends ConsumerState<ClockInScreen> {
   Color statusColor = Colors.grey;
   bool isClockedInForThisProject = false;
   int? clockedInProjectId;
-  bool get isClockedIn => clockedInProjectId != null;
-
+  bool get isClockedIn => isClockedInForThisProject;
   @override
   void initState() {
     super.initState();
@@ -41,30 +42,66 @@ class _ClockInScreenState extends ConsumerState<ClockInScreen> {
   }
 
   Future<void> _checkClockedInState() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isClockedIn = prefs.getBool(_clockedInKey) ?? false;
-    final projectId = prefs.getInt(_clockedInProjectIdKey);
-    if (isClockedIn && projectId != null) {
-      // Print log to console
-      // ignore: avoid_print
-      print('[ClockIn] Currently clocked in to project ID: $projectId');
-    } else {
-      print('[ClockIn] Not clocked in to any project.');
+    try {
+      final session = await CurrentClockSessionService.fetchCurrentSession();
+
+      if (!mounted) return;
+
+      /// ACTIVE SESSION
+      if (session.isClockedIn && session.data != null) {
+        final activeProjectId = session.data!.projectId;
+
+        setState(() {
+          clockedInProjectId = activeProjectId;
+
+          isClockedInForThisProject = activeProjectId == widget.projectId;
+        });
+      } else {
+        /// NO ACTIVE SESSION
+        setState(() {
+          clockedInProjectId = null;
+
+          isClockedInForThisProject = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("CLOCK SESSION ERROR => $e");
+
+      setState(() {
+        clockedInProjectId = null;
+
+        isClockedInForThisProject = false;
+      });
     }
-    if (!mounted) return;
-    setState(() {
-      isClockedInForThisProject = isClockedIn && projectId == widget.projectId;
-      clockedInProjectId = isClockedIn ? projectId : null;
-    });
-    // Optionally, you can still redirect if you want, or just show the button
   }
 
   String _cleanErrorMessage(Object error) {
-    final raw = error.toString();
-    if (raw.startsWith('Exception: ')) {
-      return raw.replaceFirst('Exception: ', '');
+    try {
+      String raw = error.toString();
+
+      // Remove Exception prefix
+      if (raw.startsWith('Exception: ')) {
+        raw = raw.replaceFirst('Exception: ', '');
+      }
+
+      // Find JSON part
+      final jsonStart = raw.indexOf('{');
+
+      if (jsonStart != -1) {
+        final jsonString = raw.substring(jsonStart);
+
+        final Map<String, dynamic> data = jsonDecode(jsonString);
+
+        // Return only detail message
+        if (data.containsKey('detail')) {
+          return data['detail'].toString();
+        }
+      }
+
+      return raw;
+    } catch (e) {
+      return "Something went wrong";
     }
-    return raw;
   }
 
   Future<void> handleClockIn() async {
@@ -83,52 +120,36 @@ class _ClockInScreenState extends ConsumerState<ClockInScreen> {
           statusColor = Colors.red;
         });
       } else if (result.withinRadius) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool(_clockedInKey, true);
-        await prefs.setInt(_clockedInProjectIdKey, widget.projectId);
-        await prefs.setInt(
-          "clockInStartMillis",
-          DateTime.now().millisecondsSinceEpoch,
-        );
+        await CurrentClockSessionService.syncCurrentSession();
         setState(() {
           statusMessage = "✅ ${result.message}";
           statusColor = Colors.green;
           isClockedInForThisProject = true;
         });
         // 🔥 Navigate to Job List after success
-        Future.delayed(const Duration(seconds: 1), () {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => JobListScreen(projectId: widget.projectId),
-            ),
-          );
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (!mounted) return;
+
+          Navigator.pop(context, true);
         });
       } else {
         setState(() {
-          statusMessage =
-              "❌ You are ${result.distance.toStringAsFixed(1)}m away\nAllowed: ${result.allowedRadius}m";
+          statusMessage = "❌ You are not at the site location";
           statusColor = Colors.orange;
         });
       }
     } catch (e) {
       final message = _cleanErrorMessage(e);
       if (message.toLowerCase().contains('active clock-in session')) {
-        // Try to parse backend response for active session project
         try {
-          // e may be a DioError, Exception, or String. Try to extract response body.
           final errorStr = e.toString();
-          // Debug print full error string
-          // ignore: avoid_print
-          print('[ClockIn][DEBUG] Error string: ' + errorStr);
+
           final jsonStart = errorStr.indexOf('{');
           if (jsonStart != -1) {
             final jsonStr = errorStr.substring(jsonStart);
             // ignore: avoid_print
-            print('[ClockIn][DEBUG] JSON string: ' + jsonStr);
             final Map<String, dynamic> data = jsonDecode(jsonStr);
             // ignore: avoid_print
-            print('[ClockIn][DEBUG] Parsed JSON: ' + data.toString());
             if (data.containsKey('active_session')) {
               final activeSession = data['active_session'];
               final int? backendProjectId = activeSession['project'] is int
@@ -195,12 +216,13 @@ class _ClockInScreenState extends ConsumerState<ClockInScreen> {
     print('[ClockOut] Attempting to clock out...');
     try {
       // Fetch project details from provider
-      final projectsAsync = ref.read(projectListProvider);
-      List<ProjectModel> projects = [];
-      if (projectsAsync is AsyncData<List<ProjectModel>>) {
-        projects = projectsAsync.value;
-      } else if (projectsAsync is AsyncValue<List<ProjectModel>>) {
-        projects = projectsAsync.value ?? [];
+      final projectsAsync = ref.read(AllprojectControllerProvider);
+      List<AllprojectModel> projects = [];
+      if (projectsAsync is AsyncData<List<AllprojectModel>>) {
+        final projectsState = ref.read(AllprojectControllerProvider);
+        projects = projectsState.projects;
+      } else if (projectsAsync is AsyncValue<List<AllprojectModel>>) {
+        projects = projectsAsync.projects;
       }
       // Debug print project list and clockedInProjectId
       // ignore: avoid_print
@@ -234,14 +256,14 @@ class _ClockInScreenState extends ConsumerState<ClockInScreen> {
       // ignore: avoid_print
       print('[ClockOut] API result: $result');
       if (result) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool(_clockedInKey, false);
-        await prefs.remove(_clockedInProjectIdKey);
-        await prefs.remove("clockInStartMillis");
+        await CurrentClockSessionService.clearCachedSession();
+
+        await _checkClockedInState();
         setState(() {
           statusMessage = "✅ Successfully clocked out.";
           statusColor = Colors.green;
           isClockedInForThisProject = false;
+          clockedInProjectId = null;
         });
       } else {
         setState(() {
@@ -311,16 +333,6 @@ class _ClockInScreenState extends ConsumerState<ClockInScreen> {
                             Icons.info_outline,
                             color: Color(0xFF1B5EF7),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              "Currently clocked in to project ID: $clockedInProjectId",
-                              style: const TextStyle(
-                                color: Color(0xFF1B5EF7),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
                         ],
                       ),
                     ),
@@ -379,6 +391,8 @@ class _ClockInScreenState extends ConsumerState<ClockInScreen> {
                     ),
                     child: Text(
                       statusMessage,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14,

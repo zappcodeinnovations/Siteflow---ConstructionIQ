@@ -5,12 +5,29 @@ class TokenManager {
   static const String refreshTokenKey = "refresh_token";
   static const String userEmailKey = "user_email";
   static const String clockedInProjectIdsKey = "clockedInProjectIds";
+  static const String _passwordSetPrefix = "isPasswordSet_";
+  static const String _firstLoginPrefix = "isFirstLogin_";
 
   // 🔐 SAVE TOKENS
   static Future<void> saveTokens(String access, String refresh) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(accessTokenKey, access);
     await prefs.setString(refreshTokenKey, refresh);
+  }
+
+  /// REMOVE CLOCKED-IN PROJECT
+  static Future<void> removeClockedInProjectId(int projectId) async {
+    final ids = await getClockedInProjectIds();
+
+    ids.remove(projectId);
+
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setStringList(
+      clockedInProjectIdsKey,
+
+      ids.map((e) => e.toString()).toList(),
+    );
   }
 
   // 📥 GET ACCESS TOKEN
@@ -37,16 +54,35 @@ class TokenManager {
     return prefs.getString(userEmailKey);
   }
 
+  static Future<void> setPasswordSet(String email, bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool("$_passwordSetPrefix$email", value);
+    await prefs.setBool("$_firstLoginPrefix$email", !value);
+  }
+
+  static Future<bool> isPasswordSet(String email) async {
+    final prefs = await SharedPreferences.getInstance();
+    final storedValue = prefs.getBool("$_passwordSetPrefix$email");
+    if (storedValue != null) {
+      return storedValue;
+    }
+
+    final legacyFirstLogin = prefs.getBool("$_firstLoginPrefix$email");
+    if (legacyFirstLogin != null) {
+      return !legacyFirstLogin;
+    }
+
+    return false;
+  }
+
   // 🔑 SET FIRST LOGIN FLAG
   static Future<void> setFirstLogin(String email, bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool("isFirstLogin_$email", value);
+    await setPasswordSet(email, !value);
   }
 
   // 📥 GET FIRST LOGIN FLAG
   static Future<bool> isFirstLogin(String email) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool("isFirstLogin_$email") ?? true;
+    return !(await isPasswordSet(email));
   }
 
   // 🧾 GET CLOCKED-IN PROJECT IDS
@@ -83,6 +119,8 @@ class TokenManager {
     await prefs.remove("clockInStartMillis");
     await prefs.setBool("isClockedIn", false);
     await prefs.remove("clockedInProjectId");
+    await prefs.remove("clockSessionId");
+    await prefs.remove("clockedInProjectName");
     await prefs.setBool("isLoggedIn", false);
   }
 }

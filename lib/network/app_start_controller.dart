@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/current_clock_session_service.dart';
 import '../../services/token_services.dart';
 
 enum AppStartStatus {
@@ -47,12 +48,12 @@ class AppStartController extends StateNotifier<AppStartStatus> {
       }
 
       /// 🆕 First time login check
-      final isFirstLogin =
-          prefs.getBool("isFirstLogin_$email") ?? true;
+      final isPasswordSet = await TokenManager.isPasswordSet(email);
 
-      if (isFirstLogin) {
+      if (!isPasswordSet) {
         state = AppStartStatus.firstTimeUser;
       } else {
+        await CurrentClockSessionService.syncCurrentSession();
         state = AppStartStatus.authenticated;
       }
     } catch (e) {

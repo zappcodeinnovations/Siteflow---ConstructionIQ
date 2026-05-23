@@ -6,7 +6,10 @@ final jobControllerProvider = Provider<JobController>((ref) {
   return JobController();
 });
 
-final jobListProvider = FutureProvider<List<JobModel>>((ref) async {
+final jobListProvider = FutureProvider.family<List<JobModel>, int>((
+  ref,
+  projectId,
+) async {
   final controller = ref.read(jobControllerProvider);
-  return controller.fetchJobs();
+  return controller.fetchJobs(projectId: projectId);
 });

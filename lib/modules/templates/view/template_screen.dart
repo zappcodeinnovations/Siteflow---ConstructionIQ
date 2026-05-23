@@ -1,6 +1,6 @@
-import 'package:euro_side/modules/templates/model/template_model.dart';
-import 'package:euro_side/modules/templates/provider/template_provider.dart';
-import 'package:euro_side/modules/templates/view/template_form_screen.dart';
+import 'package:euroside/modules/templates/model/template_model.dart';
+import 'package:euroside/modules/templates/provider/template_provider.dart';
+import 'package:euroside/modules/templates/view/template_form_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

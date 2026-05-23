@@ -27,6 +27,7 @@ class User {
   final String? profileImage;
   final String? phone;
   final bool isActive;
+  final bool isPasswordSet;
 
   User({
     required this.id,
@@ -37,6 +38,7 @@ class User {
     this.profileImage,
     this.phone,
     required this.isActive,
+    required this.isPasswordSet,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -49,6 +51,7 @@ class User {
       profileImage: json["profile_image"],
       phone: json["phone"],
       isActive: json["is_active"],
+      isPasswordSet: json["is_password_set"] ?? false,
     );
   }
 }

@@ -1,4 +1,4 @@
-package com.example.euro_side
+package com.euroside.app
 
 import io.flutter.embedding.android.FlutterActivity
 

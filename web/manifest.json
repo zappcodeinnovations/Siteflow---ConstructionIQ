@@ -1,6 +1,6 @@
 {
-    "name": "euro_side",
-    "short_name": "euro_side",
+    "name": "euroside",
+    "short_name": "euroside",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

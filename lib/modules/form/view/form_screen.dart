@@ -1,11 +1,15 @@
 import 'dart:io';
 import 'dart:ui';
 
-import 'package:euro_side/modules/form/model/form_model.dart';
-import 'package:euro_side/modules/form/provider/form_provider.dart';
+import 'package:euroside/modules/form/controller/form_controller.dart';
+import 'package:euroside/modules/form/model/form_model.dart';
+import 'package:euroside/modules/form/provider/form_provider.dart';
+import 'package:euroside/modules/form/view/form.dart';
+import 'package:euroside/network/api_endpoint.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ─── Design Tokens ───────────────────────────────────────────────
 class AppColors {
@@ -51,10 +55,7 @@ class AppTextStyles {
     color: AppColors.textPrimary,
     height: 1.4,
   );
-  static const hintText = TextStyle(
-    fontSize: 14,
-    color: AppColors.textHint,
-  );
+  static const hintText = TextStyle(fontSize: 14, color: AppColors.textHint);
   static const listTitle = TextStyle(
     fontSize: 15,
     fontWeight: FontWeight.w600,
@@ -83,7 +84,7 @@ InputDecoration _fieldDecoration({
               TextSpan(
                 text: ' *',
                 style: TextStyle(color: AppColors.required, fontSize: 12),
-              )
+              ),
             ]
           : [],
     ),
@@ -116,6 +117,11 @@ InputDecoration _fieldDecoration({
 class FormsScreen extends ConsumerWidget {
   const FormsScreen({super.key});
 
+  Future<void> _refreshForms(WidgetRef ref) async {
+    ref.invalidate(formsListProvider);
+    await ref.read(formsListProvider.future);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final formsAsync = ref.watch(formsListProvider);
@@ -132,21 +138,27 @@ class FormsScreen extends ConsumerWidget {
           child: Container(height: 1, color: AppColors.border),
         ),
       ),
-      body: formsAsync.when(
-        data: (forms) => ListView.separated(
-          padding: const EdgeInsets.all(16),
-          itemCount: forms.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, index) {
-            final form = forms[index];
-            return _FormCard(form: form);
-          },
-        ),
-        loading: () => const Center(
-            child: CircularProgressIndicator(color: AppColors.accent)),
-        error: (e, _) => Center(
-          child: Text(e.toString(),
-              style: const TextStyle(color: AppColors.textSecondary)),
+      body: RefreshIndicator(
+        onRefresh: () => _refreshForms(ref),
+        child: formsAsync.when(
+          data: (forms) => ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: forms.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final form = forms[index];
+              return _FormCard(form: form);
+            },
+          ),
+          loading: () => const Center(
+            child: CircularProgressIndicator(color: AppColors.accent),
+          ),
+          error: (e, _) => Center(
+            child: Text(
+              e.toString(),
+              style: const TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
         ),
       ),
     );
@@ -164,9 +176,26 @@ class _FormCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => FormDetailScreen(form: form)),
-        ),
+        onTap: () async {
+          final prefs = await SharedPreferences.getInstance();
+
+          final userToken = prefs.getString("access_token") ?? "";
+
+          if (!context.mounted) return;
+
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => UserFormWebViewPage(
+                title: form.name,
+
+                endpoint: ApiEndpoints.userFormHtml(form.id),
+
+                accessToken: userToken,
+              ),
+            ),
+          );
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
@@ -182,8 +211,11 @@ class _FormCard extends StatelessWidget {
                   color: AppColors.accentLight,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.description_outlined,
-                    color: AppColors.accent, size: 20),
+                child: const Icon(
+                  Icons.description_outlined,
+                  color: AppColors.accent,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -194,17 +226,22 @@ class _FormCard extends StatelessWidget {
                     if (form.description != null &&
                         form.description!.isNotEmpty) ...[
                       const SizedBox(height: 3),
-                      Text(form.description!,
-                          style: AppTextStyles.listSubtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
+                      Text(
+                        form.description!,
+                        style: AppTextStyles.listSubtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ],
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              const Icon(Icons.chevron_right_rounded,
-                  color: AppColors.textHint, size: 22),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textHint,
+                size: 22,
+              ),
             ],
           ),
         ),
@@ -214,16 +251,19 @@ class _FormCard extends StatelessWidget {
 }
 
 // ─── Form Detail Screen ─────────────────────────────────────────
-class FormDetailScreen extends StatefulWidget {
+class FormDetailScreen extends ConsumerStatefulWidget {
   final FormItem form;
+
   const FormDetailScreen({super.key, required this.form});
 
   @override
-  State<FormDetailScreen> createState() => _FormDetailScreenState();
+  ConsumerState<FormDetailScreen> createState() => _FormDetailScreenState();
 }
 
-class _FormDetailScreenState extends State<FormDetailScreen> {
+class _FormDetailScreenState extends ConsumerState<FormDetailScreen> {
   final Map<String, dynamic> formData = {};
+
+  bool isSubmitting = false;
 
   @override
   Widget build(BuildContext context) {
@@ -248,51 +288,119 @@ class _FormDetailScreenState extends State<FormDetailScreen> {
               children: _buildSectionedFields(widget.form),
             ),
           ),
-          _SubmitBar(onSubmit: _handleSubmit),
+
+          _SubmitBar(onSubmit: _handleSubmit, isLoading: isSubmitting),
         ],
       ),
     );
   }
 
-  void _handleSubmit() {
-    debugPrint("FORM DATA: $formData");
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Row(
-          children: [
-            Icon(Icons.check_circle_outline_rounded,
-                color: AppColors.success, size: 18),
-            SizedBox(width: 10),
-            Text("Form submitted successfully",
+  Future<void> _handleSubmit() async {
+    setState(() {
+      isSubmitting = true;
+    });
+
+    try {
+      debugPrint("FORM DATA => $formData");
+
+      final fields = formData.map(
+        (key, value) => MapEntry(key, value.toString()),
+      );
+
+      debugPrint("FIELDS => $fields");
+
+      /// ✅ DIRECT CONTROLLER CALL
+      final controller = ref.read(formsControllerProvider);
+
+      final success = await controller.submitForm(
+        formId: widget.form.id.toString(),
+        fields: fields,
+      );
+
+      debugPrint("SUBMIT SUCCESS => $success");
+
+      if (!mounted) return;
+
+      if (!success) {
+        throw Exception("Form submission failed");
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(
+                Icons.check_circle_outline_rounded,
+                color: AppColors.success,
+                size: 18,
+              ),
+              SizedBox(width: 10),
+              Text(
+                "Form submitted successfully",
                 style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w500,
-                    fontSize: 14)),
-          ],
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.surface,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          margin: const EdgeInsets.all(16),
         ),
-        backgroundColor: AppColors.surface,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
+      );
+
+      await Future.delayed(const Duration(seconds: 1));
+
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e, stackTrace) {
+      debugPrint("❌ SUBMIT ERROR => $e");
+      debugPrint("📍 STACKTRACE => $stackTrace");
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Something went wrong: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSubmitting = false;
+        });
+      }
+    }
   }
 
   List<Widget> _buildSectionedFields(FormItem form) {
     final fieldsBySection = <String, List<FormFieldItem>>{};
+
     for (var field in form.fields) {
       fieldsBySection.putIfAbsent(field.sectionTitle, () => []).add(field);
     }
 
     final widgets = <Widget>[];
+
     fieldsBySection.forEach((section, fields) {
       widgets.add(_SectionHeader(title: section));
+
       fields.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+
       for (var field in fields) {
         widgets.add(_buildFieldWidget(field));
       }
+
       widgets.add(const SizedBox(height: 8));
     });
+
     return widgets;
   }
 
@@ -308,7 +416,9 @@ class _FormDetailScreenState extends State<FormDetailScreen> {
             style: AppTextStyles.inputText,
             cursorColor: AppColors.accent,
             decoration: _fieldDecoration(label: label, isRequired: isReq),
-            onChanged: (val) => formData[key] = val,
+            onChanged: (val) {
+              formData[key] = val;
+            },
           ),
         );
 
@@ -319,7 +429,9 @@ class _FormDetailScreenState extends State<FormDetailScreen> {
             style: AppTextStyles.inputText,
             cursorColor: AppColors.accent,
             decoration: _fieldDecoration(label: label, isRequired: isReq),
-            onChanged: (val) => formData[key] = val,
+            onChanged: (val) {
+              formData[key] = val;
+            },
           ),
         );
 
@@ -328,66 +440,26 @@ class _FormDetailScreenState extends State<FormDetailScreen> {
           child: DropdownButtonFormField<String>(
             style: AppTextStyles.inputText,
             dropdownColor: AppColors.surface,
-            icon: const Icon(Icons.keyboard_arrow_down_rounded,
-                color: AppColors.textSecondary),
+            icon: const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: AppColors.textSecondary,
+            ),
             items: field.options.map((opt) {
-              return DropdownMenuItem(
-                value: opt.value,
-                child: Text(opt.label),
-              );
+              return DropdownMenuItem(value: opt.value, child: Text(opt.label));
             }).toList(),
-            onChanged: (val) => formData[key] = val,
+            onChanged: (val) {
+              formData[key] = val;
+            },
             decoration: _fieldDecoration(label: label, isRequired: isReq),
           ),
         );
 
-      case 'multiselect':
-        return _MultiSelectField(
-          field: field,
-          label: label,
-          isRequired: isReq,
-          selectedValues: formData[key] ?? [],
-          onChanged: (vals) => setState(() => formData[key] = vals),
-        );
-
-      case 'date_time':
-        return _DateField(
-          label: label,
-          isRequired: isReq,
-          value: formData[key],
-          onPicked: (val) => setState(() => formData[key] = val),
-        );
-
-      case 'yes_no':
-        return _YesNoField(
-          label: label,
-          isRequired: isReq,
-          value: formData[key] ?? false,
-          onChanged: (val) => setState(() => formData[key] = val),
-        );
-
-      case 'photos':
-        return _PhotoField(
-          label: label,
-          isRequired: isReq,
-          value: (formData[key] as List<XFile>?) ?? const [],
-          onChanged: (files) => setState(() => formData[key] = files),
-        );
-
-      case 'signature':
-        return _SignatureField(
-          label: label,
-          isRequired: isReq,
-          value: formData[key] is _SignatureValue
-              ? formData[key] as _SignatureValue
-              : null,
-          onChanged: (signature) => setState(() => formData[key] = signature),
-        );
-
       default:
         return _FieldWrapper(
-          child: Text("Unsupported: ${field.fieldType}",
-              style: const TextStyle(color: AppColors.textSecondary)),
+          child: Text(
+            "Unsupported: ${field.fieldType}",
+            style: const TextStyle(color: AppColors.textSecondary),
+          ),
         );
     }
   }
@@ -460,9 +532,12 @@ class _MultiSelectField extends StatelessWidget {
               children: isRequired
                   ? const [
                       TextSpan(
-                          text: ' *',
-                          style: TextStyle(
-                              color: AppColors.required, fontSize: 12))
+                        text: ' *',
+                        style: TextStyle(
+                          color: AppColors.required,
+                          fontSize: 12,
+                        ),
+                      ),
                     ]
                   : [],
             ),
@@ -485,11 +560,14 @@ class _MultiSelectField extends StatelessWidget {
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
-                    color:
-                        isSelected ? AppColors.chipSelected : AppColors.surface,
+                    color: isSelected
+                        ? AppColors.chipSelected
+                        : AppColors.surface,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: isSelected
@@ -502,8 +580,9 @@ class _MultiSelectField extends StatelessWidget {
                     opt.label,
                     style: TextStyle(
                       fontSize: 13,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.w400,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w400,
                       color: isSelected
                           ? AppColors.accent
                           : AppColors.textSecondary,
@@ -546,8 +625,9 @@ class _DateField extends StatelessWidget {
             builder: (context, child) => Theme(
               data: Theme.of(context).copyWith(
                 colorScheme: const ColorScheme.light(
-                    primary: AppColors.accent,
-                    onSurface: AppColors.textPrimary),
+                  primary: AppColors.accent,
+                  onSurface: AppColors.textPrimary,
+                ),
               ),
               child: child!,
             ),
@@ -575,17 +655,22 @@ class _DateField extends StatelessWidget {
                           children: isRequired
                               ? const [
                                   TextSpan(
-                                      text: ' *',
-                                      style: TextStyle(
-                                          color: AppColors.required,
-                                          fontSize: 12))
+                                    text: ' *',
+                                    style: TextStyle(
+                                      color: AppColors.required,
+                                      fontSize: 12,
+                                    ),
+                                  ),
                                 ]
                               : [],
                         ),
                       ),
               ),
-              const Icon(Icons.calendar_today_outlined,
-                  size: 18, color: AppColors.textSecondary),
+              const Icon(
+                Icons.calendar_today_outlined,
+                size: 18,
+                color: AppColors.textSecondary,
+              ),
             ],
           ),
         ),
@@ -628,9 +713,12 @@ class _YesNoField extends StatelessWidget {
                   children: isRequired
                       ? const [
                           TextSpan(
-                              text: ' *',
-                              style: TextStyle(
-                                  color: AppColors.required, fontSize: 12))
+                            text: ' *',
+                            style: TextStyle(
+                              color: AppColors.required,
+                              fontSize: 12,
+                            ),
+                          ),
                         ]
                       : [],
                 ),
@@ -717,8 +805,11 @@ class _PhotoField extends StatelessWidget {
                       color: AppColors.accentLight,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(Icons.add_photo_alternate_outlined,
-                        color: AppColors.accent, size: 20),
+                    child: const Icon(
+                      Icons.add_photo_alternate_outlined,
+                      color: AppColors.accent,
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Column(
@@ -728,16 +819,19 @@ class _PhotoField extends StatelessWidget {
                         text: TextSpan(
                           text: label,
                           style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.textPrimary),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.textPrimary,
+                          ),
                           children: isRequired
                               ? const [
                                   TextSpan(
-                                      text: ' *',
-                                      style: TextStyle(
-                                          color: AppColors.required,
-                                          fontSize: 12))
+                                    text: ' *',
+                                    style: TextStyle(
+                                      color: AppColors.required,
+                                      fontSize: 12,
+                                    ),
+                                  ),
                                 ]
                               : [],
                         ),
@@ -748,7 +842,9 @@ class _PhotoField extends StatelessWidget {
                             ? "Tap to upload photos"
                             : "${value.length} photo${value.length == 1 ? '' : 's'} selected",
                         style: const TextStyle(
-                            fontSize: 12, color: AppColors.textSecondary),
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ],
                   ),
@@ -834,7 +930,10 @@ class _SignatureField extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 24,
+          ),
           child: StatefulBuilder(
             builder: (context, setDialogState) {
               final hasSignature = draftPoints.any((point) => point != null);
@@ -901,7 +1000,10 @@ class _SignatureField extends StatelessWidget {
                                 setDialogState(() {
                                   draftPoints = [
                                     ...draftPoints,
-                                    _normalize(details.localPosition, canvasSize),
+                                    _normalize(
+                                      details.localPosition,
+                                      canvasSize,
+                                    ),
                                   ];
                                 });
                               },
@@ -909,7 +1011,10 @@ class _SignatureField extends StatelessWidget {
                                 setDialogState(() {
                                   draftPoints = [
                                     ...draftPoints,
-                                    _normalize(details.localPosition, canvasSize),
+                                    _normalize(
+                                      details.localPosition,
+                                      canvasSize,
+                                    ),
                                   ];
                                 });
                               },
@@ -945,9 +1050,9 @@ class _SignatureField extends StatelessWidget {
                         ElevatedButton(
                           onPressed: hasSignature
                               ? () => Navigator.pop(
-                                    dialogContext,
-                                    _SignatureValue(points: draftPoints),
-                                  )
+                                  dialogContext,
+                                  _SignatureValue(points: draftPoints),
+                                )
                               : null,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.accent,
@@ -986,9 +1091,12 @@ class _SignatureField extends StatelessWidget {
               children: isRequired
                   ? const [
                       TextSpan(
-                          text: ' *',
-                          style: TextStyle(
-                              color: AppColors.required, fontSize: 12))
+                        text: ' *',
+                        style: TextStyle(
+                          color: AppColors.required,
+                          fontSize: 12,
+                        ),
+                      ),
                     ]
                   : [],
             ),
@@ -1020,14 +1128,18 @@ class _SignatureField extends StatelessWidget {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.gesture_rounded,
-                              color: AppColors.textHint.withOpacity(0.5),
-                              size: 28),
+                          Icon(
+                            Icons.gesture_rounded,
+                            color: AppColors.textHint.withOpacity(0.5),
+                            size: 28,
+                          ),
                           const SizedBox(height: 6),
                           const Text(
                             "Tap to add signature",
                             style: TextStyle(
-                                fontSize: 13, color: AppColors.textHint),
+                              fontSize: 13,
+                              color: AppColors.textHint,
+                            ),
                           ),
                         ],
                       ),
@@ -1099,16 +1211,9 @@ class _SignaturePainter extends CustomPainter {
     }
 
     if (points.isNotEmpty && points.last != null) {
-      canvas.drawPoints(
-        PointMode.points,
-        [
-          Offset(
-            points.last!.dx * size.width,
-            points.last!.dy * size.height,
-          )
-        ],
-        paint,
-      );
+      canvas.drawPoints(PointMode.points, [
+        Offset(points.last!.dx * size.width, points.last!.dy * size.height),
+      ], paint);
     }
   }
 
@@ -1121,13 +1226,18 @@ class _SignaturePainter extends CustomPainter {
 // ─── Submit Bar ───────────────────────────────────────────────────
 class _SubmitBar extends StatelessWidget {
   final VoidCallback onSubmit;
-  const _SubmitBar({required this.onSubmit});
+  final bool isLoading;
+  const _SubmitBar({required this.onSubmit, required this.isLoading});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.fromLTRB(
-          16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
+        16,
+        12,
+        16,
+        12 + MediaQuery.of(context).padding.bottom,
+      ),
       decoration: const BoxDecoration(
         color: AppColors.surface,
         border: Border(top: BorderSide(color: AppColors.border)),
@@ -1140,20 +1250,33 @@ class _SubmitBar extends StatelessWidget {
             foregroundColor: Colors.white,
             elevation: 0,
             padding: const EdgeInsets.symmetric(vertical: 15),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
             textStyle: const TextStyle(
-                fontSize: 15, fontWeight: FontWeight.w600, letterSpacing: 0.2),
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.2,
+            ),
           ),
-          onPressed: onSubmit,
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.check_circle_outline_rounded, size: 18),
-              SizedBox(width: 8),
-              Text("Submit Form"),
-            ],
-          ),
+          onPressed: isLoading ? null : onSubmit,
+          child: isLoading
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle_outline_rounded, size: 18),
+                    SizedBox(width: 8),
+                    Text("Submit Form"),
+                  ],
+                ),
         ),
       ),
     );

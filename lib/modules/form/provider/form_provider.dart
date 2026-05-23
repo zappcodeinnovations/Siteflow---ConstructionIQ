@@ -1,7 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../controller/form_controller.dart';
 import '../model/form_model.dart';
+import '../model/form_status_kpi_model.dart';
 
+/// 🔥 SUBMIT PARAMS
 class SubmitFormParams {
   final String formId;
   final String? projectId;
@@ -21,19 +24,30 @@ final formsControllerProvider = Provider<FormsController>((ref) {
   return FormsController();
 });
 
-/// ✅ GET FORMS LIST (AUTO CACHE + REFRESH)
+/// ✅ GET FORMS LIST
 final formsListProvider = FutureProvider.autoDispose<List<FormItem>>((
   ref,
 ) async {
   final controller = ref.read(formsControllerProvider);
 
-  /// 🔥 Keeps data alive for some time (optional but useful)
+  /// 🔥 Keep cache alive
   ref.keepAlive();
 
   return controller.fetchForms();
 });
 
-/// ✅ SUBMIT FORM (ACTION PROVIDER 🔥)
+/// ✅ GET FORM STATUS KPI
+final formStatusKpiProvider = FutureProvider.autoDispose<FormStatusKpiModel>((
+  ref,
+) async {
+  final controller = ref.read(formsControllerProvider);
+
+  ref.keepAlive();
+
+  return controller.fetchFormStatusKpi();
+});
+
+/// ✅ SUBMIT FORM
 final submitFormProvider = FutureProvider.family<bool, SubmitFormParams>((
   ref,
   params,
@@ -47,8 +61,11 @@ final submitFormProvider = FutureProvider.family<bool, SubmitFormParams>((
     fields: params.fields,
   );
 
-  /// 🔥 Refresh forms after submit (optional)
+  /// 🔥 Refresh forms list
   ref.invalidate(formsListProvider);
+
+  /// 🔥 Refresh KPI data
+  ref.invalidate(formStatusKpiProvider);
 
   return result;
 });

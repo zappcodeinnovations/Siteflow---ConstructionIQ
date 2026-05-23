@@ -1,7 +1,7 @@
-import 'package:euro_side/screens/nav_bar/main_navigation_screen.dart';
+import 'package:euroside/screens/nav_bar/main_navigation_screen.dart';
 // For navigation from dashboard
 // ignore: unused_import
-import 'package:euro_side/screens/login/login_page.dart';
+import 'package:euroside/screens/login/login_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';

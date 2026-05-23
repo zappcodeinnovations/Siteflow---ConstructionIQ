@@ -1,0 +1,1578 @@
+import 'dart:async';
+import 'package:euroside/modules/Auth/view/auth_view.dart';
+import 'package:euroside/modules/all_projects/provider/all_project_provider.dart';
+import 'package:euroside/modules/all_projects/view/all_project_view.dart';
+import 'package:euroside/modules/all_projects/view/project_details_view.dart';
+import 'package:euroside/modules/all_projects/model/all_project_model.dart';
+import 'package:euroside/modules/clock_in/view/clock_in_screen.dart';
+import 'package:euroside/modules/clock_out/model/clock_out_model.dart';
+import 'package:euroside/modules/clock_out/provider/clock_provider.dart';
+import 'package:euroside/modules/form/provider/form_provider.dart';
+import 'package:euroside/modules/form/view/form_screen.dart';
+import 'package:euroside/modules/job/view/job_screen.dart';
+import 'package:euroside/modules/profile/provider/profile_provider.dart';
+import 'package:euroside/services/current_clock_session_service.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:iconsax/iconsax.dart';
+
+class DashboardScreen extends ConsumerStatefulWidget {
+  const DashboardScreen({super.key});
+
+  @override
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen>
+    with WidgetsBindingObserver {
+  static const String _clockedInKey = "isClockedIn";
+  static const String _clockedInProjectIdKey = "clockedInProjectId";
+  static const String _clockInStartMillisKey = "clockInStartMillis";
+
+  String _currentLocation = "Fetching location...";
+  String _clockedInProjectName = "";
+
+  Duration _shiftDuration = Duration.zero;
+  Timer? _timer;
+  bool _isClockedIn = false;
+  bool _isClockingOut = false;
+  static const Color _ink = Color(0xFF111318);
+  static const Color _ink2 = Color(0xFF6B7280);
+  static const Color _surface = Color(0xFFFFFFFF);
+  static const Color _bg = Color(0xFFF7F8FA);
+  static const Color _border = Color(0xFFE5E7EB);
+  static const Color _accent = Color(0xFF2563EB);
+  static const Color _accentLight = Color(0xFFEFF4FF);
+  bool _locationPermissionDenied = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadShiftState();
+    _startTimer();
+    Future.microtask(
+      () => ref.read(AllprojectControllerProvider.notifier).fetchProjects(),
+    );
+    Future.microtask(
+      () => ref.read(profileControllerProvider.notifier).getProfile(),
+    );
+    // Future.microtask(() async {
+    //   await _fetchCurrentLocation();
+    //   await _setClockedInProjectName();
+    // });
+  }
+
+  void handleSessionExpired(BuildContext context, Object error) {
+    final msg = error.toString();
+    if (msg.contains('Session expired')) {
+      // Remove all routes and go to login
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const SignInScreen()),
+        (route) => false,
+      );
+    }
+  }
+
+  Future<void> _fetchCurrentLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+
+      if (!serviceEnabled) {
+        setState(() {
+          _currentLocation = "No permission for location";
+        });
+
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        setState(() {
+          _currentLocation = "No permission for location";
+        });
+
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition();
+
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        final place = placemarks.first;
+
+        setState(() {
+          _currentLocation = "${place.locality}, ${place.administrativeArea}";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _currentLocation = "No permission for location";
+      });
+    }
+  }
+  // Future<void> _setClockedInProjectName() async {
+  //   try {
+  //     final session = await CurrentClockSessionService.fetchCurrentSession();
+
+  //     if (!mounted) return;
+
+  //     if (session.isClockedIn && session.data != null) {
+  //       setState(() {
+  //         _clockedInProjectName = session.data!.projectName;
+  //       });
+  //     } else {
+  //       setState(() {
+  //         _clockedInProjectName = "No active project";
+  //       });
+  //     }
+  //   } catch (e) {
+  //     debugPrint("CLOCK SESSION ERROR => $e");
+  //   }
+  // }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadShiftState();
+    }
+  }
+
+  Future<void> _refreshDashboard() async {
+    await _loadShiftState();
+    await ref
+        .read(AllprojectControllerProvider.notifier)
+        .fetchProjects(force: true);
+    await ref.read(profileControllerProvider.notifier).getProfile();
+  }
+
+  Future<void> _openClockedInProjectDetails(int projectId) async {
+    AllprojectModel? project;
+
+    for (final item in ref.read(AllprojectControllerProvider).projects) {
+      if (item.id == projectId) {
+        project = item;
+        break;
+      }
+    }
+
+    if (project == null) {
+      await ref
+          .read(AllprojectControllerProvider.notifier)
+          .fetchProjectDetails(projectId);
+
+      if (!mounted) return;
+
+      project = ref.read(AllprojectControllerProvider).selectedProject;
+    }
+
+    if (project == null) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Project details are unavailable')),
+      );
+      return;
+    }
+
+    final resolvedProject = project;
+
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AllProjectDetailsPage(
+          projectId: resolvedProject.id,
+          initialProject: resolvedProject,
+        ),
+      ),
+    );
+  }
+
+  Future<Position?> _getCurrentPosition() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Location service is disabled')),
+      );
+      return null;
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Location permission is required')),
+      );
+      return null;
+    }
+
+    return Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+  }
+
+  Future<void> _clockOutFromDashboard() async {
+    if (_isClockingOut) return;
+
+    setState(() {
+      _isClockingOut = true;
+    });
+
+    try {
+      final session = await CurrentClockSessionService.fetchCurrentSession();
+
+      if (!session.isClockedIn || session.data == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No active clock-in session found')),
+        );
+        await _loadShiftState();
+        return;
+      }
+
+      final position = await _getCurrentPosition();
+      if (position == null) {
+        return;
+      }
+
+      final model = ClockOutModel(
+        projectId: session.data!.projectId,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        notes: 'Clocked out from dashboard',
+      );
+
+      final result = await ref
+          .read(clockOutControllerProvider)
+          .clockOut(model: model);
+
+      if (!mounted) return;
+
+      if (result) {
+        await CurrentClockSessionService.clearCachedSession();
+        await _loadShiftState();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Successfully clocked out'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Clock out failed'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      handleSessionExpired(context, e);
+
+      final error = e.toString().toLowerCase();
+      if (error.contains('task') ||
+          error.contains('sheet') ||
+          error.contains('form') ||
+          error.contains('submit') ||
+          error.contains('required') ||
+          error.contains('fill')) {
+        _showFormRequiredDialog();
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Clock out failed: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isClockingOut = false;
+        });
+      }
+    }
+  }
+
+  void _showFormRequiredDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 68,
+                  height: 68,
+                  decoration: const BoxDecoration(
+                    color: Color(0xffFFF7ED),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.assignment_rounded,
+                    color: Color(0xffF97316),
+                    size: 34,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Form Required',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xff0F172A),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Please fill and submit the required form before clocking out. You can open the form page from here.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: Color(0xff64748B),
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.grey.shade700,
+                          side: BorderSide(color: Colors.grey.shade300),
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xff2563EB),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        onPressed: () async {
+                          Navigator.pop(context);
+
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const FormsScreen(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.open_in_new, size: 18),
+                        label: const Text(
+                          'Fill Form',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _loadShiftState() async {
+    try {
+      final session = await CurrentClockSessionService.syncCurrentSession();
+
+      if (!mounted) return;
+
+      if (session != null && session.isClockedIn && session.data != null) {
+        final data = session.data!;
+
+        setState(() {
+          _isClockedIn = true;
+
+          _shiftDuration = Duration(seconds: data.elapsedSeconds);
+
+          _clockedInProjectName = data.projectName;
+
+          // _currentLocation = "Fetching location...";
+        });
+
+        /// LOAD LOCATION FAST
+        _fetchCurrentLocation();
+      } else {
+        setState(() {
+          _isClockedIn = false;
+
+          _shiftDuration = Duration.zero;
+
+          _clockedInProjectName = "No active project";
+
+          _currentLocation = "Location unavailable";
+        });
+      }
+    } catch (e) {
+      debugPrint("Session fetch error: $e");
+    }
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_isClockedIn) {
+        setState(() {
+          _shiftDuration += const Duration(seconds: 1);
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String get _formattedTime {
+    final h = _shiftDuration.inHours.toString().padLeft(2, '0');
+    final m = (_shiftDuration.inMinutes % 60).toString().padLeft(2, '0');
+    final s = (_shiftDuration.inSeconds % 60).toString().padLeft(2, '0');
+    return "$h:$m:$s";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final profileState = ref.watch(profileControllerProvider);
+    final userEmail = profileState.profile?.email ?? "User";
+    final projectState = ref.watch(AllprojectControllerProvider);
+    final kpiState = ref.watch(formStatusKpiProvider);
+    return Scaffold(
+      backgroundColor: _bg,
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _refreshDashboard,
+          child: projectState.isLoading && projectState.projects.isEmpty
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(_accent),
+                  ),
+                )
+              : projectState.error != null
+              ? Center(
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: _isNetworkError(projectState.error)
+                          ? _buildNetworkErrorCard(onRetry: _refreshDashboard)
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Iconsax.warning_2,
+                                  size: 40,
+                                  color: Color(0xFFEF4444),
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  "Something went wrong",
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: _ink,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  projectState.error ?? "",
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: _ink2,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                )
+              : Builder(
+                  builder: (_) {
+                    final projects = projectState.projects;
+                    final kpi = kpiState.valueOrNull;
+                    final totalForms = kpi?.totalForms ?? 0;
+                    final notSignature = kpi?.notSignature ?? 0;
+                    final submitted = kpi?.submitted ?? 0;
+                    final completed = kpi?.completed ?? 0;
+                    // print("KPI Total Forms: $totalForms");
+                    // print("KPI Submitted: $submitted");
+                    // print("KPI Completed: $completed");
+                    // print("KPI Not Signature: $notSignature");
+                    final latestSubmission = kpi?.latestSubmission;
+
+                    return SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // ── HEADER ──────────────────────────────────────────────
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Image.asset(
+                                "assets/logo/Euroside_Logo.png",
+                                height: 32,
+                              ),
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      color: _accentLight,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Icon(
+                                      Iconsax.user,
+                                      size: 14,
+                                      color: _accent,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        "Welcome back",
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: _ink2,
+                                          fontWeight: FontWeight.w400,
+                                        ),
+                                      ),
+                                      Text(
+                                        userEmail,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: _ink,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 18,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _isClockedIn ? _accent : _surface,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: _isClockedIn
+                                    ? Colors.transparent
+                                    : _border,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: _isClockedIn
+                                      ? _accent.withOpacity(0.18)
+                                      : Colors.black.withOpacity(0.04),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: _isClockedIn
+                                        ? Colors.white.withOpacity(0.15)
+                                        : _bg,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(
+                                    _isClockedIn
+                                        ? Iconsax.clock
+                                        : Iconsax.timer,
+                                    color: _isClockedIn ? Colors.white : _ink2,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _isClockedIn
+                                          ? "Shift Duration"
+                                          : "Not Clocked In",
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: _isClockedIn
+                                            ? Colors.white.withOpacity(0.75)
+                                            : _ink2,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+
+                                    const SizedBox(height: 4),
+
+                                    Text(
+                                      _isClockedIn
+                                          ? _formattedTime
+                                          : "--:--:--",
+                                      style: TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w700,
+                                        color: _isClockedIn
+                                            ? Colors.white
+                                            : _ink,
+                                        letterSpacing: 1.5,
+                                      ),
+                                    ),
+
+                                    if (_isClockedIn) ...[
+                                      const SizedBox(height: 14),
+
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 10,
+                                        ),
+
+                                        // decoration: BoxDecoration(
+                                        //   color: Colors.white.withOpacity(0.12),
+                                        //   borderRadius: BorderRadius.circular(
+                                        //     12,
+                                        //   ),
+                                        //   border: Border.all(
+                                        //     color: Colors.white.withOpacity(
+                                        //       0.12,
+                                        //     ),
+                                        //   ),
+                                        // ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Iconsax.location,
+                                              size: 15,
+                                              color: Colors.white,
+                                            ),
+
+                                            const SizedBox(width: 8),
+
+                                            Flexible(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    "Operative Location",
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: Colors.white
+                                                          .withOpacity(0.7),
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                    ),
+                                                  ),
+
+                                                  const SizedBox(height: 2),
+
+                                                  Text(
+                                                    _currentLocation,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 28),
+
+                          // ── STATS SECTION TITLE ──────────────────────────────────
+                          _sectionTitle("Form Stats", Iconsax.chart_1),
+
+                          const SizedBox(height: 12),
+
+                          kpiState.when(
+                            data: (_) {
+                              return Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _statCard(
+                                          "Total Forms",
+                                          totalForms,
+                                          _StatStyle.amber,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _statCard(
+                                          "Submitted",
+                                          submitted,
+                                          _StatStyle.blue,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+
+                                  const SizedBox(height: 10),
+
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _statCard(
+                                          "Completed",
+                                          completed,
+                                          _StatStyle.green,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _statCard(
+                                          "Not Signature",
+                                          notSignature,
+                                          _StatStyle.red,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              );
+                            },
+
+                            loading: () => const Padding(
+                              padding: EdgeInsets.all(20),
+                              child: Center(child: CircularProgressIndicator()),
+                            ),
+
+                            error: (e, _) => _isNetworkError(e.toString())
+                                ? _buildNetworkErrorCard(
+                                    onRetry: _refreshDashboard,
+                                  )
+                                : Center(child: Text(e.toString())),
+                          ),
+                          if (latestSubmission != null) ...[
+                            _sectionTitle(
+                              "Latest Form Submission",
+                              Iconsax.chart_1,
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: _border),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.03),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEFF4FF),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(
+                                      Iconsax.document_text,
+                                      color: _accent,
+                                      size: 18,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          "Latest Submission",
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: _ink2,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          latestSubmission.formName.isEmpty
+                                              ? "No recent submission"
+                                              : latestSubmission.formName,
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                            color: _ink,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          "Status: ${latestSubmission.status.isEmpty ? 'unknown' : latestSubmission.status}",
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: _ink2,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 28),
+
+                          _sectionTitle("Clocked In Project", Iconsax.chart_1),
+                          const SizedBox(height: 10),
+
+                          InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: _isClockedIn
+                                ? () async {
+                                    final session =
+                                        await CurrentClockSessionService.fetchCurrentSession();
+
+                                    if (!mounted) return;
+
+                                    final sessionData = session?.data;
+                                    if (sessionData == null) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'No active project found',
+                                          ),
+                                        ),
+                                      );
+                                      return;
+                                    }
+
+                                    await _openClockedInProjectDetails(
+                                      sessionData.projectId,
+                                    );
+                                  }
+                                : null,
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(16),
+
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: _border),
+
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.03),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(10),
+
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFEFF4FF),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+
+                                        child: const Icon(
+                                          Iconsax.briefcase,
+                                          color: _accent,
+                                          size: 18,
+                                        ),
+                                      ),
+
+                                      const SizedBox(width: 12),
+
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+
+                                          children: [
+                                            const Text(
+                                              "Clocked In Project",
+
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: _ink2,
+                                              ),
+                                            ),
+
+                                            const SizedBox(height: 4),
+
+                                            Text(
+                                              _clockedInProjectName.isEmpty
+                                                  ? "No Clocked In Project"
+                                                  : _clockedInProjectName,
+
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w600,
+                                                color: _ink,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+
+                                      if (_isClockedIn) ...[
+                                        const SizedBox(width: 8),
+                                        const Icon(
+                                          Iconsax.arrow_right_3,
+                                          size: 18,
+                                          color: _ink2,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+
+                                  const SizedBox(height: 16),
+
+                                  if (_isClockedIn) ...[
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 10,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFF8FAFC),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: const Color(0xFFE2E8F0),
+                                              ),
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                const Icon(
+                                                  Iconsax.location,
+                                                  size: 15,
+                                                  color: _ink2,
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    _currentLocation,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      color: _ink2,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton.icon(
+                                        onPressed: _isClockingOut
+                                            ? null
+                                            : _clockOutFromDashboard,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(
+                                            0xFFDC2626,
+                                          ),
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 14,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                        ),
+                                        icon: _isClockingOut
+                                            ? const SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  valueColor:
+                                                      AlwaysStoppedAnimation<
+                                                        Color
+                                                      >(Colors.white),
+                                                ),
+                                              )
+                                            : const Icon(
+                                                Icons.logout,
+                                                size: 18,
+                                              ),
+                                        label: Text(
+                                          _isClockingOut
+                                              ? 'Clocking out...'
+                                              : 'Clock Out',
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ] else ...[
+                                    Text(
+                                      'No active clock-in session',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: _ink2.withOpacity(0.8),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          // Row(
+                          //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          //   children: [
+                          //     _sectionTitle("Your Projects", Iconsax.briefcase),
+                          //     GestureDetector(
+                          //       onTap: () async {
+                          //         final result = await Navigator.push(
+                          //           context,
+                          //           MaterialPageRoute(
+                          //             builder: (_) => const AllProjectListPage(),
+                          //           ),
+                          //         );
+
+                          //         if (result == true) {
+                          //           await _loadShiftState();
+                          //         }
+                          //       },
+                          //       child: Row(
+                          //         children: const [
+                          //           Text(
+                          //             "See all",
+                          //             style: TextStyle(
+                          //               fontSize: 13,
+                          //               color: _accent,
+                          //               fontWeight: FontWeight.w500,
+                          //             ),
+                          //           ),
+                          //           SizedBox(width: 3),
+                          //           Icon(
+                          //             Iconsax.arrow_right_1,
+                          //             size: 14,
+                          //             color: _accent,
+                          //           ),
+                          //         ],
+                          //       ),
+                          //     ),
+                          //   ],
+                          // ),
+
+                          // const SizedBox(height: 12),
+
+                          // // ── PROJECT LIST ─────────────────────────────────────────
+                          // if (previewProjects.isEmpty)
+                          //   Container(
+                          //     width: double.infinity,
+                          //     padding: const EdgeInsets.symmetric(vertical: 36),
+                          //     decoration: BoxDecoration(
+                          //       color: _surface,
+                          //       borderRadius: BorderRadius.circular(14),
+                          //       border: Border.all(color: _border),
+                          //     ),
+                          //     child: Column(
+                          //       children: [
+                          //         Icon(
+                          //           Iconsax.folder_open,
+                          //           size: 40,
+                          //           color: _ink2.withOpacity(0.3),
+                          //         ),
+                          //         const SizedBox(height: 10),
+                          //         const Text(
+                          //           "No projects assigned yet",
+                          //           style: TextStyle(color: _ink2, fontSize: 13),
+                          //         ),
+                          //       ],
+                          //     ),
+                          //   )
+                          // else
+                          //   ...previewProjects.map((p) {
+                          //     final _StatusMeta meta = _statusMeta(p.status);
+
+                          //     return GestureDetector(
+                          //       onTap: () async {
+                          //         final prefs =
+                          //             await SharedPreferences.getInstance();
+                          //         final isClockedIn =
+                          //             prefs.getBool(_clockedInKey) ?? false;
+                          //         final clockedInProjectId = prefs.getInt(
+                          //           _clockedInProjectIdKey,
+                          //         );
+
+                          //         if (isClockedIn && clockedInProjectId == p.id) {
+                          //           if (!context.mounted) return;
+                          //           final result = await Navigator.push(
+                          //             context,
+                          //             MaterialPageRoute(
+                          //               builder: (_) => ClockInScreen(
+                          //                 projectId: p.id,
+                          //                 projectName: p.name,
+                          //               ),
+                          //             ),
+                          //           );
+
+                          //           if (result == true) {
+                          //             await _loadShiftState();
+                          //           }
+                          //         } else if (isClockedIn &&
+                          //             clockedInProjectId != null &&
+                          //             clockedInProjectId != p.id) {
+                          //           if (!context.mounted) return;
+                          //           // ScaffoldMessenger.of(context).showSnackBar(
+                          //           //   const SnackBar(
+                          //           //     content: Text(
+                          //           //       'You already have an active clock-in on another project. Please clock out first.',
+                          //           //     ),
+                          //           //   ),
+                          //           // );
+                          //           Fluttertoast.showToast(
+                          //             msg:
+                          //                 'You already have an active clock-in on another project. Please clock out first.',
+                          //             toastLength: Toast.LENGTH_SHORT,
+                          //             gravity: ToastGravity.CENTER,
+                          //             backgroundColor: Colors.redAccent,
+                          //             textColor: Colors.white,
+                          //           );
+                          //         } else {
+                          //           if (!context.mounted) return;
+                          //           await Navigator.push(
+                          //             context,
+                          //             MaterialPageRoute(
+                          //               builder: (_) => ClockInScreen(
+                          //                 projectId: p.id,
+                          //                 projectName: p.name,
+                          //               ),
+                          //             ),
+                          //           );
+                          //         }
+                          //         await _loadShiftState();
+                          //       },
+                          //       child: Container(
+                          //         margin: const EdgeInsets.only(bottom: 10),
+                          //         padding: const EdgeInsets.symmetric(
+                          //           horizontal: 16,
+                          //           vertical: 14,
+                          //         ),
+                          //         decoration: BoxDecoration(
+                          //           color: _surface,
+                          //           borderRadius: BorderRadius.circular(14),
+                          //           border: Border.all(color: _border),
+                          //           boxShadow: [
+                          //             BoxShadow(
+                          //               color: Colors.black.withOpacity(0.03),
+                          //               blurRadius: 8,
+                          //               offset: const Offset(0, 2),
+                          //             ),
+                          //           ],
+                          //         ),
+                          //         child: Row(
+                          //           children: [
+                          //             Container(
+                          //               width: 40,
+                          //               height: 40,
+                          //               decoration: BoxDecoration(
+                          //                 color: meta.bg,
+                          //                 borderRadius: BorderRadius.circular(10),
+                          //               ),
+                          //               child: Icon(
+                          //                 Iconsax.briefcase,
+                          //                 size: 18,
+                          //                 color: meta.fg,
+                          //               ),
+                          //             ),
+                          //             const SizedBox(width: 12),
+                          //             Expanded(
+                          //               child: Column(
+                          //                 crossAxisAlignment:
+                          //                     CrossAxisAlignment.start,
+                          //                 children: [
+                          //                   Text(
+                          //                     p.name,
+                          //                     style: const TextStyle(
+                          //                       fontWeight: FontWeight.w600,
+                          //                       fontSize: 14,
+                          //                       color: _ink,
+                          //                     ),
+                          //                   ),
+                          //                   const SizedBox(height: 4),
+                          //                   Row(
+                          //                     children: [
+                          //                       Container(
+                          //                         padding:
+                          //                             const EdgeInsets.symmetric(
+                          //                               horizontal: 8,
+                          //                               vertical: 2,
+                          //                             ),
+                          //                         decoration: BoxDecoration(
+                          //                           color: meta.bg,
+                          //                           borderRadius:
+                          //                               BorderRadius.circular(6),
+                          //                         ),
+                          //                         child: Text(
+                          //                           p.status.toUpperCase(),
+                          //                           style: TextStyle(
+                          //                             fontSize: 10,
+                          //                             fontWeight: FontWeight.w600,
+                          //                             color: meta.fg,
+                          //                             letterSpacing: 0.4,
+                          //                           ),
+                          //                         ),
+                          //                       ),
+                          //                     ],
+                          //                   ),
+                          //                 ],
+                          //               ),
+                          //             ),
+                          //             const Icon(
+                          //               Iconsax.arrow_right,
+                          //               size: 16,
+                          //               color: _ink2,
+                          //             ),
+                          //           ],
+                          //         ),
+                          //       ),
+                          //     );
+                          //   }),
+
+                          // const SizedBox(height: 8),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionTitle(String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: _ink2),
+        const SizedBox(width: 7),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: _ink,
+          ),
+        ),
+      ],
+    );
+  }
+
+  bool _isNetworkError(String? message) {
+    if (message == null) return false;
+
+    final normalized = message.toLowerCase();
+    return normalized.contains('network error') ||
+        normalized.contains('socketexception') ||
+        normalized.contains('failed host lookup') ||
+        normalized.contains('unexpected html response from server') ||
+        normalized.contains('connection refused') ||
+        normalized.contains('connection timed out') ||
+        normalized.contains('timeout');
+  }
+
+  Widget _buildNetworkErrorCard({required VoidCallback onRetry}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFECACA)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: const BoxDecoration(
+              color: Color(0xFFFFF1F2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.wifi_off_rounded,
+              color: Color(0xFFEF4444),
+              size: 28,
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Network unavailable',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: _ink,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'We could not load this content because the connection failed. Please check your internet and try again.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, height: 1.45, color: _ink2),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: onRetry,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _accent,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text(
+                'Try Again',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statCard(String label, int count, _StatStyle style) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 36,
+            decoration: BoxDecoration(
+              color: style.bg,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(style.icon, size: 16, color: style.fg),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                count.toString(),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: style.fg,
+                ),
+              ),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: _ink2,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  _StatusMeta _statusMeta(String status) {
+    switch (status) {
+      case "completed":
+        return _StatusMeta(
+          bg: const Color(0xFFECFDF5),
+          fg: const Color(0xFF059669),
+        );
+      case "pending":
+        return _StatusMeta(
+          bg: const Color(0xFFFFFBEB),
+          fg: const Color(0xFFD97706),
+        );
+      case "incomplete":
+        return _StatusMeta(
+          bg: const Color(0xFFFEF2F2),
+          fg: const Color(0xFFDC2626),
+        );
+      default:
+        return _StatusMeta(bg: _accentLight, fg: _accent);
+    }
+  }
+}
+
+class _StatusMeta {
+  final Color bg;
+  final Color fg;
+  const _StatusMeta({required this.bg, required this.fg});
+}
+
+class _StatStyle {
+  final Color bg;
+  final Color fg;
+  final IconData icon;
+  const _StatStyle({required this.bg, required this.fg, required this.icon});
+
+  static final blue = _StatStyle(
+    bg: const Color(0xFFEFF4FF),
+    fg: const Color(0xFF2563EB),
+    icon: Iconsax.briefcase,
+  );
+  static final amber = _StatStyle(
+    bg: const Color(0xFFFFFBEB),
+    fg: const Color(0xFFD97706),
+    icon: Iconsax.clock,
+  );
+  static final red = _StatStyle(
+    bg: const Color(0xFFFEF2F2),
+    fg: const Color(0xFFDC2626),
+    icon: Iconsax.close_circle,
+  );
+  static final green = _StatStyle(
+    bg: const Color(0xFFECFDF5),
+    fg: const Color(0xFF059669),
+    icon: Iconsax.verify,
+  );
+}

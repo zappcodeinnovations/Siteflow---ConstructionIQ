@@ -1,7 +1,9 @@
 import 'dart:async';
 
-import 'package:euro_side/services/auth_services.dart';
-import 'package:euro_side/services/profile_services.dart';
+import 'package:euroside/services/auth_services.dart';
+import 'package:euroside/services/current_clock_session_service.dart';
+import 'package:euroside/services/profile_services.dart';
+import 'package:euroside/services/token_services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../model/auth_model.dart';
@@ -87,13 +89,12 @@ class AuthController extends StateNotifier<AuthState> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool("isLoggedIn", true);
       await prefs.setString("user_email", email);
+      await TokenManager.setPasswordSet(email, authResponse.user.isPasswordSet);
+      await CurrentClockSessionService.syncCurrentSession();
 
       state = state.copyWith(isLoading: false, user: authResponse.user);
 
-      /// FIRST LOGIN CHECK
-      final isFirstLogin = prefs.getBool("isFirstLogin_$email") ?? true;
-
-      return isFirstLogin;
+      return !authResponse.user.isPasswordSet;
     } catch (e, stackTrace) {
       print('❌ [LOGIN ERROR]: $e');
       print('📍 STACKTRACE: $stackTrace');
@@ -142,8 +143,7 @@ class AuthController extends StateNotifier<AuthState> {
 
       // ✅ SUCCESS
       if (response["message"] == "Password updated successfully.") {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool("isFirstLogin_$email", false);
+        await TokenManager.setPasswordSet(email, true);
 
         state = state.copyWith(
           isLoading: false,
@@ -154,7 +154,7 @@ class AuthController extends StateNotifier<AuthState> {
       }
 
       // ❌ UNKNOWN FAILURE
-      _setError("Failed to set password");
+      _setError("Failed to Reset password");
       print('[AuthController][setPassword] Backend error: $response');
 
       return false;

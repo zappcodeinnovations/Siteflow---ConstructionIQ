@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'package:euro_side/modules/templates/model/template_model.dart';
-import 'package:euro_side/services/template_services.dart';
+import 'package:euroside/modules/templates/model/template_model.dart';
+import 'package:euroside/services/template_services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'project_template_state.dart';
 

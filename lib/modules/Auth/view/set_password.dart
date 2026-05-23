@@ -1,5 +1,5 @@
-import 'package:euro_side/modules/Auth/provider/auth_provider.dart';
-import 'package:euro_side/screens/nav_bar/main_navigation_screen.dart';
+import 'package:euroside/modules/Auth/provider/auth_provider.dart';
+import 'package:euroside/screens/nav_bar/main_navigation_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -116,7 +116,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
       return 'Server error. Please try again later.';
     }
 
-    return 'Unable to set password. Please try again.';
+    return 'Unable to Reset password. Please try again.';
   }
 
   String _strengthLabel(String pw) {
@@ -203,7 +203,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
               // ── Title & subtitle ──────────────────────────────────────
               Center(
                 child: Text(
-                  'Set Password',
+                  'Reset Password',
                   style: GoogleFonts.inter(
                     fontSize: 26,
                     fontWeight: FontWeight.w700,
@@ -516,7 +516,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
                           ),
                         )
                       : Text(
-                          'Set Password',
+                          'Reset Password',
                           style: GoogleFonts.inter(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
@@ -539,7 +539,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
                       children: [
                         const TextSpan(text: 'Already have a password? '),
                         TextSpan(
-                          text: 'Sign in',
+                          text: 'Loginin',
                           style: GoogleFonts.inter(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,

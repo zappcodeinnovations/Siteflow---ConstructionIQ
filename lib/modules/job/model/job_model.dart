@@ -4,6 +4,7 @@ class JobModel {
   final String reference;
   final String status;
   final String scheduledDate;
+  final int formId;
   final String formName;
   final String projectName;
   final String projectCode;
@@ -16,6 +17,7 @@ class JobModel {
     required this.reference,
     required this.status,
     required this.scheduledDate,
+    required this.formId,
     required this.formName,
     required this.projectName,
     required this.projectCode,
@@ -30,6 +32,7 @@ class JobModel {
       reference: json["reference"] ?? "",
       status: json["status"] ?? "",
       scheduledDate: json["scheduled_date"] ?? "",
+      formId: json["form_id"] ?? 0,
       formName: json["form_name"] ?? "",
       projectName: json["project_name"] ?? "",
       projectCode: json["project_code"] ?? "",

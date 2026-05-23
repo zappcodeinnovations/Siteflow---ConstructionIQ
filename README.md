@@ -1,4 +1,4 @@
-# euro_side
+# euroside
 
 A new Flutter project.
 

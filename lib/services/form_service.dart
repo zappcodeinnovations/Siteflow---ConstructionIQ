@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+
 import '../network/api_client.dart';
 import '../network/api_endpoint.dart';
 
@@ -9,16 +10,30 @@ class FormService {
     try {
       final response = await ApiClient.get(ApiEndpoints.formsList);
 
-      _validateResponse(
-        response,
-        key: "results",
-      ); // changed from 'forms' to 'results'
+      _validateResponse(response, key: "results");
 
       debugPrint("📡 FORMS API RESPONSE: $response");
 
       return response;
     } catch (e, stackTrace) {
       debugPrint("❌ FORMS API ERROR: $e");
+      debugPrint("📍 STACKTRACE: $stackTrace");
+      rethrow;
+    }
+  }
+
+  /// ✅ GET FORM STATUS KPI
+  static Future<Map<String, dynamic>> getFormStatusKpi() async {
+    try {
+      final response = await ApiClient.get(ApiEndpoints.formStatusKpi);
+
+      _validateResponse(response);
+
+      debugPrint("📡 FORM STATUS KPI RESPONSE: $response");
+
+      return response;
+    } catch (e, stackTrace) {
+      debugPrint("❌ FORM STATUS KPI ERROR: $e");
       debugPrint("📍 STACKTRACE: $stackTrace");
       rethrow;
     }
@@ -31,10 +46,10 @@ class FormService {
     String? jobId,
     String action = "submit",
 
-    /// 🔥 Dynamic fields (important)
+    /// 🔥 Dynamic fields
     Map<String, String>? fields,
 
-    /// 🔥 Optional file upload (if needed later)
+    /// 🔥 Optional file upload
     File? file,
     String? fileKey,
   }) async {
