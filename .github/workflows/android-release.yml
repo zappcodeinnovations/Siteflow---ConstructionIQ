@@ -40,7 +40,7 @@ jobs:
           appId: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
           token: ${{ secrets.FIREBASE_TOKEN }}
           file: build/app/outputs/flutter-apk/app-release.apk
-          groups: testers
+          groups: Zappkode Testers
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
