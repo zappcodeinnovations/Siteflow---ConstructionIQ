@@ -24,9 +24,6 @@ jobs:
         with:
           flutter-version: 3.44.1
 
-      - name: Verify Flutter Version
-        run: flutter --version
-
       - name: Install Dependencies
         run: flutter pub get
 
@@ -37,17 +34,16 @@ jobs:
       - name: Build Release APK
         run: flutter build apk --release
 
-      - name: Build Release AppBundle
-        run: flutter build appbundle --release
+      - name: Upload APK to Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          token: ${{ secrets.FIREBASE_TOKEN }}
+          file: build/app/outputs/flutter-apk/app-release.apk
+          groups: testers
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
-
-      - name: Upload AAB Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-aab
-          path: build/app/outputs/bundle/release/app-release.aab
