@@ -2,6 +2,7 @@ import 'package:euroside/modules/Project_photos/model/photos_model.dart';
 import 'package:euroside/services/project_photos_services.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
+import 'package:intl/intl.dart';
 import 'package:photo_view/photo_view.dart';
 
 class WorkspaceDashboardPage extends StatefulWidget {
@@ -36,19 +37,6 @@ class _WorkspaceDashboardPageState extends State<WorkspaceDashboardPage> {
     });
 
     await _photosFuture;
-
-    /// WAIT FOR UI BUILD
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-
-          duration: const Duration(milliseconds: 700),
-
-          curve: Curves.easeInOut,
-        );
-      }
-    });
   }
 
   Future<void> _deleteSelectedPhotos() async {
@@ -97,6 +85,30 @@ class _WorkspaceDashboardPageState extends State<WorkspaceDashboardPage> {
         );
       }
     }
+  }
+
+  String _formatPhotoTimestamp(DateTime? timestamp) {
+    if (timestamp == null) {
+      return "Time unavailable";
+    }
+
+    final localTimestamp = timestamp.toLocal();
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    final photoDay = DateTime(
+      localTimestamp.year,
+      localTimestamp.month,
+      localTimestamp.day,
+    );
+    final dayDifference = startOfToday.difference(photoDay).inDays;
+
+    final dayLabel = dayDifference == 0
+        ? "Today"
+        : dayDifference == 1
+        ? "Yesterday"
+        : DateFormat('dd MMM yyyy').format(localTimestamp);
+
+    return "$dayLabel • ${DateFormat('hh:mm a').format(localTimestamp)}";
   }
 
   @override
@@ -186,15 +198,14 @@ class _WorkspaceDashboardPageState extends State<WorkspaceDashboardPage> {
                     const SizedBox(height: 24),
 
                     /// LEGEND
-                    Row(
+                    Wrap(
+                      spacing: 18,
+                      runSpacing: 12,
+
                       children: [
                         _legendItem(Colors.red, "Overdue"),
 
-                        const SizedBox(width: 18),
-
                         _legendItem(Colors.orange, "Next 7 days"),
-
-                        const SizedBox(width: 18),
 
                         _legendItem(Colors.green, "> 7 Days"),
                       ],
@@ -273,15 +284,14 @@ class _WorkspaceDashboardPageState extends State<WorkspaceDashboardPage> {
 
                     const SizedBox(height: 24),
 
-                    Row(
+                    Wrap(
+                      spacing: 18,
+                      runSpacing: 12,
+
                       children: [
                         _legendItem(Colors.red, "Overdue"),
 
-                        const SizedBox(width: 18),
-
                         _legendItem(Colors.orange, "Next 7 days"),
-
-                        const SizedBox(width: 18),
 
                         _legendItem(Colors.green, "> 7 Days"),
                       ],
@@ -599,14 +609,35 @@ class _WorkspaceDashboardPageState extends State<WorkspaceDashboardPage> {
 
                                           const SizedBox(height: 6),
 
-                                          Text(
-                                            photo.createdAt,
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.schedule,
+                                                size: 14,
+                                                color: Colors.grey.shade500,
+                                              ),
 
-                                            style: TextStyle(
-                                              color: Colors.grey.shade600,
-                                              fontSize: 11,
-                                              height: 1.4,
-                                            ),
+                                              const SizedBox(width: 6),
+
+                                              Expanded(
+                                                child: Text(
+                                                  _formatPhotoTimestamp(
+                                                    photo.createdAt,
+                                                  ),
+
+                                                  maxLines: 1,
+
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+
+                                                  style: TextStyle(
+                                                    color: Colors.grey.shade600,
+                                                    fontSize: 11,
+                                                    height: 1.4,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ],
                                       ),

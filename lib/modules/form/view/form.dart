@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
-
 import 'package:euroside/network/api_endpoint.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -24,12 +24,53 @@ class UserFormWebViewPage extends StatefulWidget {
   State<UserFormWebViewPage> createState() => _UserFormWebViewPageState();
 }
 
+Widget _permissionStep(String text) {
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 18,
+          height: 18,
+          decoration: const BoxDecoration(
+            color: Color(0xFFDBEAFE),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.check_rounded,
+            size: 12,
+            color: Color(0xFF2563EB),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 12.5,
+              height: 1.45,
+              color: Color(0xFF334155),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
   late final WebViewController _controller;
 
   final ImagePicker _imagePicker = ImagePicker();
 
+  static const int _maxUploadDimension = 1600;
+  static const int _maxUploadFileSizeBytes = 8 * 1024 * 1024;
+  static const int _imageQuality = 55;
+
   bool isLoading = true;
+  bool _isValidationDialogVisible = false;
+  bool _isNativePickerOpen = false;
 
   int _currentFieldIndex = 0;
 
@@ -53,15 +94,43 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
 
         onMessageReceived: (message) {
           if (message.message == "FORM_SUBMITTED") {
-            _showSuccessDialog();
+            _handleFormSubmitted();
+          }
+
+          if (message.message.startsWith("FORM_VALIDATION:")) {
+            final payload = message.message.replaceFirst(
+              "FORM_VALIDATION:",
+              "",
+            );
+            final dynamic parsed = _tryDecodeJson(payload);
+
+            if (parsed != null) {
+              _showFormValidationDialog(parsed);
+            }
+          }
+
+          if (message.message.startsWith("FORM_ALERT:")) {
+            final alertMessage = message.message.replaceFirst(
+              "FORM_ALERT:",
+              "",
+            );
+
+            _showFormValidationDialog({
+              'message': alertMessage,
+              'errors': <String, dynamic>{},
+            });
           }
 
           if (message.message == "OPEN_GALLERY") {
-            _pickFromGallery();
+            if (!_isNativePickerOpen) {
+              _pickFromGallery();
+            }
           }
 
           if (message.message == "OPEN_CAMERA") {
-            _pickFromCamera();
+            if (!_isNativePickerOpen) {
+              _pickFromCamera();
+            }
           }
 
           if (message.message.startsWith("FIELD_COUNT:")) {
@@ -195,6 +264,47 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
 
             await _controller.runJavaScript("""
     function setupPhotoButtons() {
+      if (window.flutterPhotoButtonInterceptorInstalled)
+        return;
+
+      window.flutterPhotoButtonInterceptorInstalled = true;
+
+      function getUploadAction(element) {
+        var current = element;
+
+        while (current && current !== document.body) {
+          if (
+            current.tagName === 'BUTTON' ||
+            (current.tagName === 'INPUT' && current.type === 'button') ||
+            current.getAttribute('role') === 'button'
+          ) {
+            const text =
+              (
+                current.innerText ||
+                current.value ||
+                current.getAttribute('aria-label') ||
+                ''
+              ).toLowerCase();
+
+            if(
+              text.includes('choose photo') ||
+              text.includes('choose from gallery') ||
+              text.includes('choose from gallary') ||
+              text.includes('gallery')
+            ) {
+              return 'OPEN_GALLERY';
+            }
+
+            if(text.includes('open camera')) {
+              return 'OPEN_CAMERA';
+            }
+          }
+
+          current = current.parentElement;
+        }
+
+        return null;
+      }
 
       document
         .querySelectorAll('button, input[type=button]')
@@ -212,37 +322,134 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
           text.includes('gallery')
         ) {
 
-          btn.onclick = function(e) {
-
-            e.preventDefault();
-
-            Flutter.postMessage(
-              'OPEN_GALLERY'
-            );
-          };
+          btn.setAttribute('data-flutter-upload-action', 'OPEN_GALLERY');
         }
 
         /// CAMERA
         if(
           text.includes('open camera')
         ) {
-
-          btn.onclick = function(e) {
-
-            e.preventDefault();
-
-            Flutter.postMessage(
-              'OPEN_CAMERA'
-            );
-          };
+          btn.setAttribute('data-flutter-upload-action', 'OPEN_CAMERA');
         }
       });
+
+      document.addEventListener(
+        'click',
+        function(e) {
+          const uploadButton =
+            e.target && e.target.closest
+              ? e.target.closest('[data-flutter-upload-action]')
+              : null;
+
+          const action = uploadButton
+            ? uploadButton.getAttribute('data-flutter-upload-action')
+            : getUploadAction(e.target);
+
+          if (!action)
+            return;
+
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+
+          Flutter.postMessage(action);
+        },
+        true
+      );
     }
 
     setTimeout(
       setupPhotoButtons,
       1000
     );
+  """);
+
+            await _controller.runJavaScript("""
+    (function() {
+      if (window.flutterApiInterceptorInstalled)
+        return;
+
+      window.flutterApiInterceptorInstalled = true;
+              window.flutterFormSubmittedHandled = false;
+
+      function parseJson(raw) {
+        if (!raw || typeof raw !== 'string')
+          return null;
+
+        try {
+          return JSON.parse(raw);
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function postValidationIfAny(data) {
+        if (!data || typeof data !== 'object')
+          return;
+
+        if (data.success === false && (data.message || data.errors)) {
+          Flutter.postMessage('FORM_VALIDATION:' + JSON.stringify(data));
+        }
+      }
+
+      function postSuccessIfAny(data) {
+        if (!data || typeof data !== 'object')
+          return;
+
+        const message = String(data.message || '').toLowerCase();
+        const looksSuccessful =
+          data.success === true ||
+          message.includes('form submitted successfully') ||
+          message.includes('submitted successfully') ||
+          message.includes('success');
+
+        if (looksSuccessful && !window.flutterFormSubmittedHandled) {
+          window.flutterFormSubmittedHandled = true;
+          Flutter.postMessage('FORM_SUBMITTED');
+        }
+      }
+
+      if (window.fetch) {
+        const originalFetch = window.fetch;
+
+        window.fetch = function() {
+          return originalFetch.apply(this, arguments).then(function(response) {
+            try {
+              response.clone().text().then(function(bodyText) {
+                const data = parseJson(bodyText);
+
+                if (data) {
+                  postValidationIfAny(data);
+                  postSuccessIfAny(data);
+                }
+              });
+            } catch (e) {}
+
+            return response;
+          });
+        };
+      }
+
+      const originalOpen = XMLHttpRequest.prototype.open;
+      const originalSend = XMLHttpRequest.prototype.send;
+
+      XMLHttpRequest.prototype.open = function() {
+        return originalOpen.apply(this, arguments);
+      };
+
+      XMLHttpRequest.prototype.send = function() {
+        this.addEventListener('load', function() {
+          const data = parseJson(this.responseText);
+
+          if (data) {
+            postValidationIfAny(data);
+            postSuccessIfAny(data);
+          }
+        });
+
+        return originalSend.apply(this, arguments);
+      };
+    })();
   """);
 
             await _controller.runJavaScript("""
@@ -256,7 +463,7 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
       return inputs.length ? inputs[inputs.length - 1] : null;
     }
 
-    function rebuildInputFiles() {
+    function rebuildInputFiles(dispatchChange) {
       const input = getTargetFileInput();
 
       if (!input) {
@@ -282,123 +489,32 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
       });
 
       input.files = dataTransfer.files;
-      input.dispatchEvent(
-        new Event('change', {
-          bubbles: true,
-        })
-      );
+
+      if (dispatchChange !== false) {
+        window.flutterApplyingNativeFiles = true;
+
+        input.dispatchEvent(
+          new Event('change', {
+            bubbles: true,
+          })
+        );
+
+        setTimeout(function() {
+          window.flutterApplyingNativeFiles = false;
+        }, 300);
+      }
     }
 
-    function renderFlutterUploadPreview() {
-      const input = getTargetFileInput();
+    window.rebuildFlutterSelectedFiles = function() {
+      rebuildInputFiles(true);
+    };
 
-      if (!input) {
-        return;
-      }
+    window.clearFlutterSelectedFiles = function(dispatchChange) {
+      window.flutterUploadState.files = [];
+      rebuildInputFiles(dispatchChange);
+    };
 
-      let preview = document.getElementById('flutter-upload-preview');
-
-      if (!preview) {
-        preview = document.createElement('div');
-        preview.id = 'flutter-upload-preview';
-        preview.style.marginTop = '12px';
-        preview.style.display = 'grid';
-        preview.style.gridTemplateColumns = '1fr';
-        preview.style.gap = '10px';
-        input.parentNode.appendChild(preview);
-      }
-
-      preview.innerHTML = '';
-
-      if (!window.flutterUploadState.files.length) {
-        const emptyState = document.createElement('div');
-        emptyState.style.padding = '12px 14px';
-        emptyState.style.border = '1px dashed #d1d5db';
-        emptyState.style.borderRadius = '12px';
-        emptyState.style.color = '#6b7280';
-        emptyState.style.fontSize = '13px';
-        // emptyState.textContent = 'No photos added yet.';
-        preview.appendChild(emptyState);
-        return;
-      }
-
-      window.flutterUploadState.files.forEach(function(item, index) {
-        const row = document.createElement('div');
-        row.style.display = 'flex';
-        row.style.alignItems = 'center';
-        row.style.gap = '12px';
-        row.style.padding = '10px 12px';
-        row.style.border = '1px solid #e5e7eb';
-        row.style.borderRadius = '12px';
-        row.style.background = '#ffffff';
-
-        const thumb = document.createElement('div');
-        thumb.style.width = '42px';
-        thumb.style.height = '42px';
-        thumb.style.borderRadius = '10px';
-        thumb.style.overflow = 'hidden';
-        thumb.style.flex = '0 0 auto';
-        thumb.style.background = '#eef4ff';
-
-        if (item.mimeType && item.mimeType.startsWith('image/')) {
-          const img = document.createElement('img');
-          img.src = 'data:' + item.mimeType + ';base64,' + item.base64;
-          img.style.width = '100%';
-          img.style.height = '100%';
-          img.style.objectFit = 'cover';
-          thumb.appendChild(img);
-        } else {
-          thumb.style.display = 'grid';
-          thumb.style.placeItems = 'center';
-          thumb.innerHTML = '<span style="font-size:18px;color:#2563eb;">📎</span>';
-        }
-
-        const info = document.createElement('div');
-        info.style.flex = '1';
-        info.style.minWidth = '0';
-
-        const name = document.createElement('div');
-        name.textContent = item.name;
-        name.style.fontSize = '13px';
-        name.style.fontWeight = '600';
-        name.style.color = '#111827';
-        name.style.whiteSpace = 'nowrap';
-        name.style.overflow = 'hidden';
-        name.style.textOverflow = 'ellipsis';
-
-        const meta = document.createElement('div');
-        meta.textContent = 'Tap remove if you want to replace this file';
-        meta.style.fontSize = '12px';
-        meta.style.color = '#6b7280';
-        meta.style.marginTop = '2px';
-
-        info.appendChild(name);
-        info.appendChild(meta);
-
-        const removeButton = document.createElement('button');
-        removeButton.type = 'button';
-        removeButton.textContent = 'Remove';
-        removeButton.style.border = 'none';
-        removeButton.style.background = '#fef2f2';
-        removeButton.style.color = '#dc2626';
-        removeButton.style.borderRadius = '10px';
-        removeButton.style.padding = '8px 10px';
-        removeButton.style.fontSize = '12px';
-        removeButton.style.fontWeight = '600';
-        removeButton.onclick = function() {
-          window.flutterUploadState.files.splice(index, 1);
-          rebuildInputFiles();
-          renderFlutterUploadPreview();
-        };
-
-        row.appendChild(thumb);
-        row.appendChild(info);
-        row.appendChild(removeButton);
-        preview.appendChild(row);
-      });
-    }
-
-    window.addFlutterSelectedFile = function(payload) {
+    window.addFlutterSelectedFile = function(payload, skipRebuild) {
       if (!payload || !payload.name || !payload.base64) {
         return;
       }
@@ -411,11 +527,10 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
         window.flutterUploadState.files.push(payload);
       }
 
-      rebuildInputFiles();
-      renderFlutterUploadPreview();
+      if (!skipRebuild) {
+        rebuildInputFiles();
+      }
     };
-
-    renderFlutterUploadPreview();
   """);
 
             /// SUCCESS ALERT
@@ -423,16 +538,29 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
     window.alert =
       function(message) {
 
+      const text = String(message || '');
+      const normalized = text.toLowerCase();
+
       if(
-        message.includes(
-          'Form submitted successfully'
-        )
+        normalized.includes('form submitted successfully') ||
+        normalized.includes('submitted successfully') ||
+        normalized.includes('success')
       ) {
 
-        Flutter.postMessage(
-          'FORM_SUBMITTED'
-        );
+        if (!window.flutterFormSubmittedHandled) {
+          window.flutterFormSubmittedHandled = true;
+
+          Flutter.postMessage(
+            'FORM_SUBMITTED'
+          );
+        }
+
+        return;
       }
+
+      Flutter.postMessage(
+        'FORM_ALERT:' + text
+      );
     };
   """);
           },
@@ -443,8 +571,62 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
             ).showSnackBar(SnackBar(content: Text(error.description)));
           },
         ),
-      )
-      ..loadRequest(Uri.parse(fullUrl));
+      );
+
+    _loadFormPage(fullUrl);
+  }
+
+  dynamic _tryDecodeJson(String raw) {
+    try {
+      return jsonDecode(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _loadFormPage(String fullUrl) async {
+    try {
+      final response = await http.get(Uri.parse(fullUrl));
+      final body = response.body.trim();
+      final contentType = response.headers['content-type'] ?? '';
+
+      final isJsonResponse =
+          contentType.contains('application/json') ||
+          body.startsWith('{') ||
+          body.startsWith('[');
+
+      if (isJsonResponse) {
+        final data = _tryDecodeJson(body);
+
+        if (data != null) {
+          _showFormValidationDialog(data);
+        } else {
+          if (!mounted) return;
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Unable to open form right now.')),
+          );
+        }
+
+        setState(() {
+          isLoading = false;
+        });
+
+        return;
+      }
+
+      await _controller.loadRequest(Uri.parse(fullUrl));
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        isLoading = false;
+      });
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Unable to load form: $error')));
+    }
   }
 
   Future<void> _navigateField(int direction) async {
@@ -582,113 +764,356 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
   }
 
   Future<void> _pickFromCamera() async {
-    final status = await Permission.camera.request();
+    if (_isNativePickerOpen) {
+      return;
+    }
 
-    if (!status.isGranted) return;
+    _isNativePickerOpen = true;
 
-    final image = await _imagePicker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 70,
+    try {
+      final status = await Permission.camera.status;
+
+      if (!status.isGranted) {
+        final result = await Permission.camera.request();
+
+        if (!result.isGranted) {
+          await _showCameraPermissionDialog();
+          return;
+        }
+      }
+
+      await _controller.runJavaScript(
+        'window.clearFlutterSelectedFiles(false);',
+      );
+
+      final image = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: _imageQuality,
+        maxWidth: _maxUploadDimension.toDouble(),
+        maxHeight: _maxUploadDimension.toDouble(),
+      );
+
+      if (image == null) return;
+
+      await _injectSelectedFile(image.path);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Camera capture failed: $e')));
+    } finally {
+      _isNativePickerOpen = false;
+    }
+  }
+
+  Future<void> _showCameraPermissionDialog() async {
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 74,
+                  height: 74,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: const Icon(
+                    Icons.camera_alt_rounded,
+                    color: Color(0xFFF97316),
+                    size: 36,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Camera permission required',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                    height: 1.25,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Enable camera access in your device settings to capture photos for this form.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    height: 1.55,
+                    color: Color(0xFF475569),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'How to enable it',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _permissionStep('Open Settings'),
+                      _permissionStep('Tap Permissions or Apps > Permissions'),
+                      _permissionStep('Turn on Camera access'),
+                      _permissionStep('Return to the app and try again'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.pop(dialogContext);
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF475569),
+                          side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          Navigator.pop(dialogContext);
+                          await openAppSettings();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2563EB),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 0,
+                        ),
+                        icon: const Icon(Icons.settings_rounded, size: 18),
+                        label: const Text(
+                          'Open Settings',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
-
-    if (image == null) return;
-
-    await _injectSelectedFile(image.path);
   }
 
   Future<void> _pickFromGallery() async {
+    if (_isNativePickerOpen) {
+      return;
+    }
+
+    _isNativePickerOpen = true;
+
     try {
+      await _controller.runJavaScript(
+        'window.clearFlutterSelectedFiles(false);',
+      );
+
       final List<XFile> images = await _imagePicker.pickMultiImage(
-        imageQuality: 70,
+        imageQuality: _imageQuality,
+        maxWidth: _maxUploadDimension.toDouble(),
+        maxHeight: _maxUploadDimension.toDouble(),
       );
 
       if (images.isEmpty) return;
 
+      final List<String> selectedNames = [];
+
       for (final image in images) {
-        await _injectSelectedFile(image.path);
+        final fileName = image.path.split(RegExp(r'[\\/]')).last;
+
+        selectedNames.add(fileName);
+
+        await _injectSelectedFile(
+          image.path,
+          rebuildInput: false,
+          showSnackBar: false,
+        );
       }
+
+      await _controller.runJavaScript('window.rebuildFlutterSelectedFiles();');
+
+      _showSelectedFilesSnackBar(selectedNames);
     } catch (e) {
       debugPrint("Gallery Error: $e");
+    } finally {
+      _isNativePickerOpen = false;
     }
   }
 
   Future<void> _pickDocument() async {
-    final result = await FilePicker.platform.pickFiles();
-
-    if (result == null || result.files.single.path == null) {
+    if (_isNativePickerOpen) {
       return;
     }
 
-    await _injectSelectedFile(result.files.single.path!);
+    _isNativePickerOpen = true;
+
+    try {
+      await _controller.runJavaScript(
+        'window.clearFlutterSelectedFiles(false);',
+      );
+
+      final result = await FilePicker.platform.pickFiles();
+
+      if (result == null || result.files.single.path == null) {
+        return;
+      }
+
+      await _injectSelectedFile(result.files.single.path!);
+    } finally {
+      _isNativePickerOpen = false;
+    }
   }
 
-  Future<void> _injectSelectedFile(String filePath) async {
-    final file = File(filePath);
+  Future<void> _injectSelectedFile(
+    String filePath, {
+    bool rebuildInput = true,
+    bool showSnackBar = true,
+  }) async {
+    try {
+      final file = File(filePath);
+      final fileSize = await file.length();
 
-    final bytes = await file.readAsBytes();
+      if (fileSize > _maxUploadFileSizeBytes) {
+        if (!mounted) return;
 
-    final base64Data = base64Encode(bytes);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Selected image is too large. Please choose a smaller photo.',
+            ),
+          ),
+        );
+        return;
+      }
 
-    final fileName = file.path.split(RegExp(r'[\\/]')).last;
+      final bytes = await file.readAsBytes();
+      final base64Data = base64Encode(bytes);
+      final fileName = file.path.split(RegExp(r'[\\/]')).last;
+      final mimeType = fileName.toLowerCase().endsWith('.png')
+          ? 'image/png'
+          : fileName.toLowerCase().endsWith('.webp')
+          ? 'image/webp'
+          : fileName.toLowerCase().endsWith('.gif')
+          ? 'image/gif'
+          : fileName.toLowerCase().endsWith('.pdf')
+          ? 'application/pdf'
+          : 'image/jpeg';
 
-    final mimeType = fileName.toLowerCase().endsWith('.png')
-        ? 'image/png'
-        : fileName.toLowerCase().endsWith('.webp')
-        ? 'image/webp'
-        : fileName.toLowerCase().endsWith('.gif')
-        ? 'image/gif'
-        : fileName.toLowerCase().endsWith('.pdf')
-        ? 'application/pdf'
-        : 'image/jpeg';
+      if (!mounted) {
+        return;
+      }
 
-    if (!mounted) {
-      return;
+      await _controller.runJavaScript(
+        "window.addFlutterSelectedFile(${jsonEncode({'name': fileName, 'mimeType': mimeType, 'base64': base64Data})}, true);",
+      );
+
+      if (rebuildInput) {
+        await _controller.runJavaScript(
+          'window.rebuildFlutterSelectedFiles();',
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not attach the selected file: $e')),
+      );
     }
+  }
+
+  void _showSelectedFilesSnackBar(List<String> files) {
+    if (!mounted || files.isEmpty) return;
+
+    final isMultiple = files.length > 1;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
         backgroundColor: Colors.transparent,
         elevation: 0,
-        duration: const Duration(seconds: 3),
+        duration: const Duration(seconds: 4),
 
         content: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding: const EdgeInsets.all(16),
 
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(22),
+
+            border: Border.all(color: const Color(0xffE5E7EB)),
 
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.08),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
               ),
             ],
-
-            border: Border.all(color: const Color(0xffE5E7EB)),
           ),
 
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 48,
-                height: 48,
+                width: 52,
+                height: 52,
 
                 decoration: BoxDecoration(
                   color: const Color(0xffEEF4FF),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(16),
                 ),
 
                 child: Icon(
-                  fileName.endsWith('.png') ||
-                          fileName.endsWith('.jpg') ||
-                          fileName.endsWith('.jpeg')
-                      ? Icons.image_rounded
-                      : Icons.insert_drive_file_rounded,
+                  isMultiple ? Icons.collections_rounded : Icons.image_rounded,
                   color: const Color(0xff2563EB),
-                  size: 26,
+                  size: 28,
                 ),
               ),
 
@@ -700,27 +1125,62 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
                   mainAxisSize: MainAxisSize.min,
 
                   children: [
-                    const Text(
-                      "File Selected",
-                      style: TextStyle(
+                    Text(
+                      isMultiple
+                          ? "${files.length} files selected"
+                          : "1 file selected",
+                      style: const TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 15,
                         color: Colors.black87,
                       ),
                     ),
 
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 8),
 
-                    Text(
-                      fileName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    ...files
+                        .take(3)
+                        .map(
+                          (file) => Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.insert_drive_file_rounded,
+                                  size: 14,
+                                  color: Color(0xff64748B),
+                                ),
 
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 13,
+                                const SizedBox(width: 6),
+
+                                Expanded(
+                                  child: Text(
+                                    file,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.grey.shade700,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                    if (files.length > 3)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          "+${files.length - 3} more files",
+                          style: const TextStyle(
+                            color: Color(0xff2563EB),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -746,95 +1206,142 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
         ),
       ),
     );
-
-    await _controller.runJavaScript(
-      "window.addFlutterSelectedFile(${jsonEncode({'name': fileName, 'mimeType': mimeType, 'base64': base64Data})});",
-    );
   }
 
-  void _showSuccessDialog() {
+  void _handleFormSubmitted() {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text('Form submitted successfully.'),
+      ),
+    );
+
+    Navigator.pop(context);
+  }
+
+  void _showFormValidationDialog(dynamic responseBody) {
+    if (!mounted || _isValidationDialogVisible) {
+      return;
+    }
+
+    String message = 'Please add live photo and signature.';
+    final List<String> fieldMessages = [];
+
+    if (responseBody is Map) {
+      final serverMessage = responseBody['message']?.toString().trim();
+      if (serverMessage != null && serverMessage.isNotEmpty) {
+        message = serverMessage;
+      }
+
+      final errors = responseBody['errors'];
+      if (errors is Map) {
+        for (final entry in errors.entries) {
+          final value = entry.value;
+
+          if (value is List && value.isNotEmpty) {
+            fieldMessages.add(value.first.toString());
+          } else if (value is String && value.isNotEmpty) {
+            fieldMessages.add(value);
+          }
+        }
+      }
+    } else if (responseBody is String && responseBody.trim().isNotEmpty) {
+      message = responseBody.trim();
+    }
+
+    _isValidationDialogVisible = true;
+
     showDialog(
       context: context,
-
       barrierDismissible: false,
-
       builder: (_) {
         return Dialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(28),
           ),
-
           child: Padding(
             padding: const EdgeInsets.all(24),
-
             child: Column(
               mainAxisSize: MainAxisSize.min,
-
               children: [
                 Container(
                   width: 80,
                   height: 80,
-
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(.1),
-
+                    color: const Color(0xffF59E0B).withOpacity(.12),
                     shape: BoxShape.circle,
                   ),
-
                   child: const Icon(
-                    Icons.check_circle,
-                    color: Colors.green,
+                    Icons.warning_amber_rounded,
+                    color: Color(0xffF59E0B),
                     size: 50,
                   ),
                 ),
-
                 const SizedBox(height: 24),
-
                 const Text(
-                  "Form Submitted",
-
+                  'Form Validation',
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-                ),
-
-                const SizedBox(height: 12),
-
-                const Text(
-                  "Your form has been submitted successfully.",
-
                   textAlign: TextAlign.center,
-
-                  style: TextStyle(
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
                     height: 1.5,
                     color: Colors.grey,
                     fontSize: 15,
                   ),
                 ),
-
-                const SizedBox(height: 28),
-
+                if (fieldMessages.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xffFEF3C7),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xffFCD34D)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: fieldMessages
+                          .map(
+                            (item) => Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Text(
+                                '• $item',
+                                style: const TextStyle(
+                                  color: Color(0xff92400E),
+                                  fontSize: 13,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
-
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xff2563EB),
-
                       foregroundColor: Colors.white,
-
                       padding: const EdgeInsets.symmetric(vertical: 14),
-
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-
                     onPressed: () {
                       Navigator.pop(context);
-
-                      Navigator.pop(context);
                     },
-
-                    child: const Text("Done"),
+                    child: const Text('OK'),
                   ),
                 ),
               ],
@@ -842,11 +1349,17 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
           ),
         );
       },
-    );
+    ).then((_) {
+      _isValidationDialogVisible = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final webViewBottomPadding = Platform.isIOS ? bottomInset + 140 : 60.0;
+    final controlsBottom = 10.0 + bottomInset + (Platform.isIOS ? 8.0 : 0.0);
+
     return Scaffold(
       backgroundColor: const Color(0xffF4F7FB),
 
@@ -868,7 +1381,7 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
         children: [
           Positioned.fill(
             child: Padding(
-              padding: const EdgeInsets.only(bottom: 60),
+              padding: EdgeInsets.only(bottom: webViewBottomPadding),
 
               child: WebViewWidget(controller: _controller),
             ),
@@ -885,7 +1398,7 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
               left: 30,
               right: 30,
 
-              bottom: 10 + MediaQuery.of(context).padding.bottom,
+              bottom: controlsBottom,
 
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,

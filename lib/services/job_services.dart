@@ -42,9 +42,8 @@ class JobService {
   /// ✅ COMMON VALIDATION
   static Future<Map<String, dynamic>> createJob({
     required int projectId,
-    required int formId,
+    required List<int> formIds,
     required String reference,
-    required String formName,
     required String siteContact,
     required String instructions,
   }) async {
@@ -52,8 +51,7 @@ class JobService {
       final response =
           await ApiClient.post(ApiEndpoints.createProjectJob(projectId), {
             "reference": reference,
-            "form_id": formId,
-            "form_name": formName,
+            "form_ids": formIds,
             "site_contact": siteContact,
             "instructions": instructions,
           });

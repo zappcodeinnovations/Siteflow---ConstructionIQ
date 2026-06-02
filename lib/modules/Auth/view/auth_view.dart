@@ -1,15 +1,22 @@
 import 'package:euroside/modules/Auth/provider/auth_provider.dart';
+import 'package:euroside/modules/Auth/view/forgot_password_view.dart';
 import 'package:euroside/modules/Auth/view/set_password.dart';
 import 'package:euroside/screens/nav_bar/main_navigation_screen.dart';
+import 'package:euroside/utils/google_fonts_fallback.dart';
+import 'package:euroside/utils/user_session_cache.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax/iconsax.dart';
 
 class SignInScreen extends ConsumerStatefulWidget {
   final bool showLogoutMessage;
+  final String? logoutMessage;
 
-  const SignInScreen({super.key, this.showLogoutMessage = false});
+  const SignInScreen({
+    super.key,
+    this.showLogoutMessage = false,
+    this.logoutMessage,
+  });
 
   @override
   ConsumerState<SignInScreen> createState() => _SignInScreenState();
@@ -19,6 +26,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _sessionWarningDialogShown = false;
 
   static const Color _accentBlue = Color(0xFF003DA5);
   static const Color _pageBg = Color(0xFFF5F6FA);
@@ -39,6 +47,197 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     );
   }
 
+  Future<bool> _showSingleDeviceSessionDialog(
+    String message,
+    Map<String, dynamic>? data,
+  ) async {
+    if (!mounted) return false;
+
+    bool shouldRetryLogin = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        bool isProcessing = false;
+
+        return Dialog(
+          backgroundColor: Colors.white,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF4E5),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: const Icon(
+                    Iconsax.warning_2,
+                    color: Color(0xFFF59E0B),
+                    size: 36,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Active Session Detected',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                    height: 1.25,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.55,
+                    color: Color(0xFF475569),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        color: Color(0xFF2563EB),
+                        size: 18,
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'You can log out the other device and continue here.',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            height: 1.45,
+                            color: Color(0xFF334155),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                StatefulBuilder(
+                  builder: (context, setModalState) {
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 50,
+                            child: OutlinedButton(
+                              onPressed: isProcessing
+                                  ? null
+                                  : () {
+                                      Navigator.pop(dialogContext);
+                                    },
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xFF334155),
+                                side: const BorderSide(
+                                  color: Color(0xFFE2E8F0),
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: const Text('Cancel'),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          flex: 2,
+                          child: SizedBox(
+                            height: 50,
+                            child: ElevatedButton(
+                              onPressed: isProcessing
+                                  ? null
+                                  : () async {
+                                      setModalState(() => isProcessing = true);
+                                      final email = _emailController.text
+                                          .trim();
+                                      final ok = await ref
+                                          .read(authControllerProvider.notifier)
+                                          .logoutOtherDevice(email);
+                                      if (!mounted || !dialogContext.mounted) {
+                                        return;
+                                      }
+                                      setModalState(() => isProcessing = false);
+                                      if (ok) {
+                                        shouldRetryLogin = true;
+                                        Navigator.of(dialogContext).pop();
+                                      }
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _accentBlue,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: isProcessing
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Logout Other Device',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    return shouldRetryLogin;
+  }
+
+  void _openForgotPasswordScreen() {
+    final email = _emailController.text.trim();
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ForgotPasswordScreen(initialEmail: email),
+      ),
+    );
+  }
+
   String _friendlyLoginError(String error) {
     final cleanedError = error.split('|BACKEND_JSON|').first.trim();
     final normalizedError = cleanedError.toLowerCase();
@@ -54,11 +253,17 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     }
 
     if (normalizedError.contains("network error")) {
-      return "Network error. Please try again.";
+      return "Unable to reach the server. Check your internet connection or try again later.";
     }
 
     if (normalizedError.contains("server error")) {
       return "Server error. Please try again later.";
+    }
+
+    if (normalizedError.contains("failed host lookup") ||
+        normalizedError.contains("no address associated with hostname") ||
+        normalizedError.contains("socketexception")) {
+      return "Unable to reach the server. Check your internet connection or try again later.";
     }
 
     return cleanedError;
@@ -75,7 +280,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             behavior: SnackBarBehavior.floating,
-            content: const Text("Logout successful"),
+            content: Text(widget.logoutMessage ?? "Logout successful"),
           ),
         );
       }
@@ -90,6 +295,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   }
 
   Future<void> _login() async {
+    _sessionWarningDialogShown = false;
+
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
@@ -109,10 +316,64 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     }
 
     final authController = ref.read(authControllerProvider.notifier);
+    print("🧪 [LOGIN TEST] Login button tapped for email=$email");
+
     final shouldSetPassword = await authController.login(email, password);
     if (!mounted) return;
     final authState = ref.read(authControllerProvider);
+
+    if (authState.sessionWarningMessage != null &&
+        !_sessionWarningDialogShown) {
+      _sessionWarningDialogShown = true;
+      final retryLogin = await _showSingleDeviceSessionDialog(
+        authState.sessionWarningMessage!,
+        authState.sessionWarningData,
+      );
+      if (!mounted) return;
+
+      if (!retryLogin) {
+        return;
+      }
+
+      final retryShouldSetPassword = await authController.login(
+        email,
+        password,
+      );
+      if (!mounted) return;
+      final retryState = ref.read(authControllerProvider);
+      if (retryState.error != null) {
+        return;
+      }
+      if (retryState.sessionWarningMessage != null) {
+        _showValidationMessage(retryState.sessionWarningMessage!);
+        return;
+      }
+
+      resetUserSessionCache(ref);
+
+      print(
+        "🧪 [LOGIN TEST] Retry login route for email=$email "
+        "setPassword=$retryShouldSetPassword",
+      );
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => retryShouldSetPassword
+              ? SetPasswordScreen(email: email)
+              : const NavigationScreen(),
+        ),
+      );
+      return;
+    }
+
     if (authState.error == null) {
+      resetUserSessionCache(ref);
+
+      print(
+        "🧪 [LOGIN TEST] Login route for email=$email "
+        "setPassword=$shouldSetPassword",
+      );
+
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => shouldSetPassword
@@ -278,63 +539,27 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
               const SizedBox(height: 20),
 
-              // ── Remember me + Forgot password ─────────────────────────
-              // Row(
-              //   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              //   children: [
-              //     Row(
-              //       children: [
-              //         SizedBox(
-              //           width: 20,
-              //           height: 20,
-              //           child: Checkbox(
-              //             value: _rememberMe,
-              //             onChanged: (v) =>
-              //                 setState(() => _rememberMe = v ?? false),
-              //             activeColor: _accentBlue,
-              //             shape: RoundedRectangleBorder(
-              //               borderRadius: BorderRadius.circular(4),
-              //             ),
-              //             side: const BorderSide(
-              //               color: Color(0xFFCDD1DA),
-              //               width: 1.5,
-              //             ),
-              //             materialTapTargetSize:
-              //                 MaterialTapTargetSize.shrinkWrap,
-              //           ),
-              //         ),
-              //         const SizedBox(width: 8),
-              //         Text(
-              //           'Remember me',
-              //           style: GoogleFonts.inter(
-              //             fontSize: 13,
-              //             color: Colors.black54,
-              //           ),
-              //         ),
-              //       ],
-              //     ),
-              //     GestureDetector(
-              //       onTap: () {
-              //         Navigator.of(context).push(
-              //           MaterialPageRoute(
-              //             builder: (_) => SetPasswordScreen(
-              //               email: _emailController.text.trim(),
-              //             ),
-              //             // builder: (_) => NavigationScreen(),
-              //           ),
-              //         );
-              //       },
-              //       child: Text(
-              //         'Forgot Password?',
-              //         style: GoogleFonts.inter(
-              //           fontSize: 13,
-              //           fontWeight: FontWeight.w500,
-              //           color: _accentBlue,
-              //         ),
-              //       ),
-              //     ),
-              //   ],
-              // ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _openForgotPasswordScreen,
+                  style: TextButton.styleFrom(
+                    foregroundColor: _accentBlue,
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    'Forgot password?',
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: _accentBlue,
+                    ),
+                  ),
+                ),
+              ),
+
               const SizedBox(height: 22),
 
               // ── Success Message ────────────────────────────────────────

@@ -1,16 +1,18 @@
+import 'dart:convert';
+
 import 'package:euroside/modules/Project_photos/view/project_camera_page.dart';
 import 'package:euroside/modules/Team/view/team.dart';
 import 'package:euroside/modules/all_projects/model/all_project_model.dart';
-import 'package:euroside/modules/all_projects/view/all_project_view.dart';
 import 'package:euroside/modules/all_projects/view/project_location_view.dart';
 import 'package:euroside/modules/announcements/view/announcement.dart';
 import 'package:euroside/modules/clock_out/model/clock_out_model.dart';
 import 'package:euroside/modules/clock_out/provider/clock_provider.dart';
 import 'package:euroside/modules/form/view/form_screen.dart';
+import 'package:euroside/modules/form/view/selected_job_forms_screen.dart';
 import 'package:euroside/modules/job/view/job_screen.dart';
 import 'package:euroside/modules/project_dashboard/view/project_dashboard.dart';
-import 'package:euroside/services/all_project_service.dart';
 import 'package:euroside/services/token_services.dart';
+import 'package:euroside/screens/nav_bar/main_navigation_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:iconsax/iconsax.dart';
@@ -41,6 +43,14 @@ class _AllProjectDetailsPageState extends ConsumerState<AllProjectDetailsPage> {
   static const Color _text = Color(0xff0F172A);
   static const Color _subText = Color(0xff64748B);
   bool _isClockingOut = false;
+
+  void _goToDashboard() {
+    // Navigator.of(context).pushAndRemoveUntil(
+    //   MaterialPageRoute(builder: (_) => const WorkspaceDashboardPage()),
+    //   (route) => false,
+    // );
+    Navigator.pop(context);
+  }
 
   @override
   void initState() {
@@ -111,14 +121,12 @@ class _AllProjectDetailsPageState extends ConsumerState<AllProjectDetailsPage> {
           );
         }
 
-        /// VERY IMPORTANT
-        /// REMOVE ALL PREVIOUS PAGES
         await Future.delayed(const Duration(milliseconds: 400));
 
         if (!mounted) return;
 
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const AllProjectListPage()),
+          MaterialPageRoute(builder: (_) => const NavigationScreen()),
           (_) => false,
         );
 
@@ -156,7 +164,7 @@ class _AllProjectDetailsPageState extends ConsumerState<AllProjectDetailsPage> {
           lowerError.contains("fill")) {
         debugPrint("📋 TASK SHEET REQUIRED");
 
-        _showFormRequiredDialog();
+        _showFormRequiredDialog(jobId: _extractJobIdFromError(error));
 
         return;
       }
@@ -166,7 +174,66 @@ class _AllProjectDetailsPageState extends ConsumerState<AllProjectDetailsPage> {
     }
   }
 
-  void _showFormRequiredDialog() {
+  int? _extractJobIdFromError(String error) {
+    final backendJson = _extractBackendJson(error);
+    if (backendJson == null) return null;
+
+    try {
+      final decoded = jsonDecode(backendJson);
+      if (decoded is Map<String, dynamic>) {
+        final forms = decoded['missing_required_forms'];
+        if (forms is List && forms.isNotEmpty) {
+          final counts = <int, int>{};
+
+          for (final item in forms) {
+            if (item is! Map<String, dynamic>) continue;
+
+            final rawJobId = item['job_id'];
+            final parsedJobId = rawJobId is int
+                ? rawJobId
+                : int.tryParse(rawJobId?.toString() ?? '');
+
+            if (parsedJobId == null) continue;
+
+            counts[parsedJobId] = (counts[parsedJobId] ?? 0) + 1;
+          }
+
+          if (counts.isNotEmpty) {
+            final selectedJobId = counts.entries
+                .reduce((a, b) => a.value >= b.value ? a : b)
+                .key;
+
+            debugPrint(
+              '📌 PROJECT CLOCK OUT POPUP JOB ID => $selectedJobId (from missing_required_forms)',
+            );
+
+            return selectedJobId;
+          }
+        }
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  String? _extractBackendJson(String error) {
+    const marker = '|BACKEND_JSON|';
+    final markerIndex = error.indexOf(marker);
+    if (markerIndex != -1) {
+      return error.substring(markerIndex + marker.length).trim();
+    }
+
+    final jsonStart = error.indexOf('{');
+    if (jsonStart != -1) {
+      return error.substring(jsonStart).trim();
+    }
+
+    return null;
+  }
+
+  void _showFormRequiredDialog({int? jobId}) {
+    final canOpenSelectedJobForms = jobId != null;
+
     showDialog(
       context: context,
 
@@ -227,8 +294,10 @@ class _AllProjectDetailsPageState extends ConsumerState<AllProjectDetailsPage> {
                 const SizedBox(height: 10),
 
                 /// MESSAGE
-                const Text(
-                  "Please fill and submit the task sheet before clocking out from this project.",
+                Text(
+                  canOpenSelectedJobForms
+                      ? "Please fill and submit the task sheet before clocking out from this project."
+                      : "You have not created a job and no forms were selected for this project.",
 
                   textAlign: TextAlign.center,
 
@@ -293,21 +362,31 @@ class _AllProjectDetailsPageState extends ConsumerState<AllProjectDetailsPage> {
                         onPressed: () async {
                           Navigator.pop(context);
 
-                          await Navigator.push(
-                            context,
+                          if (canOpenSelectedJobForms) {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    SelectedJobFormsScreen(jobId: jobId),
+                              ),
+                            );
+                            return;
+                          }
 
-                            MaterialPageRoute(
-                              builder: (_) => const FormsScreen(),
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'You have not created a job and no forms were selected for this project.',
+                              ),
                             ),
                           );
                         },
 
                         icon: const Icon(Icons.open_in_new, size: 18),
 
-                        label: const Text(
-                          "Fill Form",
-
-                          style: TextStyle(fontWeight: FontWeight.w600),
+                        label: Text(
+                          canOpenSelectedJobForms ? "Fill Form" : "Okay",
+                          style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                       ),
                     ),
@@ -322,315 +401,200 @@ class _AllProjectDetailsPageState extends ConsumerState<AllProjectDetailsPage> {
   }
 
   Future<AllprojectModel> _loadProject() async {
-    try {
-      final response = await AllProjectService.getProjectDetails(
-        widget.projectId,
-      );
-
-      final data = response['data'];
-
-      if (data is Map<String, dynamic>) {
-        return AllprojectModel.fromJson(data);
-      }
-    } catch (e) {
-      debugPrint("PROJECT DETAILS ERROR: $e");
-    }
-
     return widget.initialProject;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _bg,
-      appBar: AppBar(
-        elevation: 0,
+    return WillPopScope(
+      onWillPop: () async {
+        _goToDashboard();
+        return false;
+      },
+      child: Scaffold(
         backgroundColor: _bg,
-        scrolledUnderElevation: 0,
-        titleSpacing: 0,
-
-        title: const Text(
-          "Project Workspace",
-          style: TextStyle(
+        appBar: AppBar(
+          elevation: 0,
+          backgroundColor: _bg,
+          scrolledUnderElevation: 0,
+          titleSpacing: 0,
+          leading: IconButton(
+            onPressed: _goToDashboard,
+            icon: const Icon(Icons.arrow_back_rounded),
             color: _text,
-            fontWeight: FontWeight.w700,
-            fontSize: 14,
           ),
-        ),
 
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: GestureDetector(
-              onTap: _isClockingOut
-                  ? null
-                  : () => _clockOut(widget.initialProject),
+          title: const Text(
+            "Project Workspace",
+            style: TextStyle(
+              color: _text,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
+          ),
 
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: GestureDetector(
+                onTap: _isClockingOut
+                    ? null
+                    : () => _clockOut(widget.initialProject),
 
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(14),
-                ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
 
-                child: Row(
-                  children: [
-                    _isClockingOut
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+
+                  child: Row(
+                    children: [
+                      _isClockingOut
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.logout_rounded,
                               color: Colors.white,
+                              size: 18,
                             ),
-                          )
-                        : const Icon(
-                            Icons.logout_rounded,
-                            color: Colors.white,
-                            size: 18,
-                          ),
+                      const SizedBox(width: 8),
 
-                    const SizedBox(width: 8),
-
-                    Text(
-                      _isClockingOut ? "Clocking..." : "Clock Out",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
+                      Text(
+                        _isClockingOut ? "Clocking..." : "Clock Out",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
-      ),
-      body: FutureBuilder<AllprojectModel>(
-        future: _projectFuture,
-        initialData: widget.initialProject,
-        builder: (context, snapshot) {
-          final project = snapshot.data ?? widget.initialProject;
+          ],
+        ),
+        body: FutureBuilder<AllprojectModel>(
+          future: _projectFuture,
+          initialData: widget.initialProject,
+          builder: (context, snapshot) {
+            final project = snapshot.data ?? widget.initialProject;
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (snapshot.connectionState == ConnectionState.waiting)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 16),
-                    child: LinearProgressIndicator(minHeight: 3),
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final workspaceColumns = _workspaceColumnCount(
+                  constraints.maxWidth,
+                );
+
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (snapshot.connectionState == ConnectionState.waiting)
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 16),
+                          child: LinearProgressIndicator(minHeight: 3),
+                        ),
+
+                      /// TOP PROJECT CARD
+                      _projectOverviewCard(project),
+
+                      const SizedBox(height: 24),
+
+                      _sectionTitle("Workspace", Iconsax.category),
+
+                      const SizedBox(height: 14),
+
+                      GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _workspaceActions.length,
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: workspaceColumns,
+                          crossAxisSpacing: 14,
+                          mainAxisSpacing: 14,
+                          mainAxisExtent: workspaceColumns == 2 ? 110 : 118,
+                        ),
+                        itemBuilder: (context, index) {
+                          final action = _workspaceActions[index];
+                          return _actionCard(
+                            icon: action.icon,
+                            title: action.title,
+                            color: action.color,
+                            onTap: () => action.onTap(context, project),
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      _sectionTitle("Location", Iconsax.location),
+
+                      const SizedBox(height: 14),
+
+                      _locationSection(project),
+
+                      const SizedBox(height: 24),
+
+                      _sectionTitle("Project Statistics", Iconsax.chart_21),
+
+                      const SizedBox(height: 14),
+
+                      Wrap(
+                        spacing: 14,
+                        runSpacing: 14,
+                        children: [
+                          _statCard(
+                            "Project Code",
+                            project.code.isEmpty ? "-" : project.code,
+                            Iconsax.code,
+                          ),
+                          _statCard(
+                            "Progress",
+                            "${project.progress}%",
+                            Iconsax.activity,
+                          ),
+                          _statCard(
+                            "Workers",
+                            project.assignedWorkerCount.toString(),
+                            Iconsax.profile_2user,
+                          ),
+                          _statCard(
+                            "Jobs",
+                            project.jobCount.toString(),
+                            Iconsax.task,
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      _sectionTitle("Project Details", Iconsax.info_circle),
+
+                      const SizedBox(height: 14),
+
+                      _detailsCard(project),
+
+                      const SizedBox(height: 30),
+                    ],
                   ),
-
-                /// TOP PROJECT CARD
-                _projectOverviewCard(project),
-
-                const SizedBox(height: 24),
-
-                _sectionTitle("Workspace", Iconsax.category),
-
-                const SizedBox(height: 14),
-
-                /// QUICK ACTIONS
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 14,
-                  mainAxisSpacing: 14,
-                  childAspectRatio: .95,
-                  children: [
-                    _actionCard(
-                      icon: Iconsax.element_4,
-                      title: "Dashboard",
-                      color: const Color(0xff2563EB),
-
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const WorkspaceDashboardPage(),
-                          ),
-                        );
-                      },
-                    ),
-                    _actionCard(
-                      icon: Iconsax.notification,
-                      title: "Announcement",
-                      color: const Color(0xffEA580C),
-
-                      onTap: () {
-                        Navigator.push(
-                          context,
-
-                          MaterialPageRoute(
-                            builder: (_) => AnnouncementPage(
-                              projectId: project.id,
-
-                              projectName: project.name,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    _actionCard(
-                      icon: Iconsax.camera,
-                      title: "Camera",
-                      color: const Color(0xff7C3AED),
-
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ProjectCameraPage(),
-                          ),
-                        );
-                      },
-                    ),
-                    // _actionCard(
-                    //   icon: Iconsax.document_text,
-                    //   title: "Worksheet",
-                    //   color: const Color(0xff16A34A),
-
-                    //   onTap: () {
-                    //     Navigator.push(
-                    //       context,
-                    //       MaterialPageRoute(
-                    //         builder: (_) => const WorksheetPage(),
-                    //       ),
-                    //     );
-                    //   },
-                    // ),
-                    _actionCard(
-                      icon: Iconsax.briefcase,
-                      title: "Jobs",
-                      color: const Color(0xffDC2626),
-
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                JobListScreen(projectId: project.id),
-                          ),
-                        );
-                      },
-                    ),
-                    _actionCard(
-                      icon: Iconsax.people,
-
-                      title: "Team",
-
-                      color: const Color(0xff2563EB),
-
-                      onTap: () {
-                        Navigator.push(
-                          context,
-
-                          MaterialPageRoute(
-                            builder: (_) => TeammatesPage(
-                              projectId: project.id,
-
-                              projectName: project.name,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    // _actionCard(
-                    //   icon: Iconsax.note_1,
-                    //   title: "Diary",
-                    //   color: const Color(0xffDB2777),
-
-                    //   onTap: () {
-                    //     Navigator.push(
-                    //       context,
-                    //       MaterialPageRoute(builder: (_) => const DiaryPage()),
-                    //     );
-                    //   },
-                    // ),
-                    _actionCard(
-                      icon: Iconsax.clipboard_text,
-                      title: "Forms",
-                      color: const Color(0xff9333EA),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const FormsScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    _actionCard(
-                      icon: Iconsax.location,
-                      title: "Location",
-                      color: const Color(0xff059669),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                ProjectLocationPage(project: project),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 24),
-
-                _sectionTitle("Project Statistics", Iconsax.chart_21),
-
-                const SizedBox(height: 14),
-
-                Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  children: [
-                    _statCard(
-                      "Project Code",
-                      project.code.isEmpty ? "-" : project.code,
-                      Iconsax.code,
-                    ),
-                    _statCard(
-                      "Progress",
-                      "${project.progress}%",
-                      Iconsax.activity,
-                    ),
-                    _statCard(
-                      "Workers",
-                      project.assignedWorkerCount.toString(),
-                      Iconsax.profile_2user,
-                    ),
-                    _statCard(
-                      "Jobs",
-                      project.jobCount.toString(),
-                      Iconsax.task,
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 24),
-
-                _sectionTitle("Project Details", Iconsax.info_circle),
-
-                const SizedBox(height: 14),
-
-                _detailsCard(project),
-
-                const SizedBox(height: 30),
-              ],
-            ),
-          );
-        },
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }
@@ -765,6 +729,91 @@ class _AllProjectDetailsPageState extends ConsumerState<AllProjectDetailsPage> {
     );
   }
 
+  int _workspaceColumnCount(double width) {
+    if (width >= 1100) return 4;
+    if (width >= 700) return 3;
+    return 2;
+  }
+
+  List<_WorkspaceAction> get _workspaceActions => [
+    _WorkspaceAction(
+      icon: Iconsax.element_4,
+      title: "Dashboard",
+      color: const Color(0xff2563EB),
+      onTap: (context, project) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const WorkspaceDashboardPage()),
+        );
+      },
+    ),
+    _WorkspaceAction(
+      icon: Iconsax.notification,
+      title: "Announcement",
+      color: const Color(0xffEA580C),
+      onTap: (context, project) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AnnouncementPage(
+              projectId: project.id,
+              projectName: project.name,
+            ),
+          ),
+        );
+      },
+    ),
+    _WorkspaceAction(
+      icon: Iconsax.camera,
+      title: "Camera",
+      color: const Color(0xff7C3AED),
+      onTap: (context, project) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ProjectCameraPage()),
+        );
+      },
+    ),
+    _WorkspaceAction(
+      icon: Iconsax.briefcase,
+      title: "Jobs",
+      color: const Color(0xffDC2626),
+      onTap: (context, project) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => JobListScreen(projectId: project.id),
+          ),
+        );
+      },
+    ),
+    _WorkspaceAction(
+      icon: Iconsax.people,
+      title: "Team",
+      color: const Color(0xff2563EB),
+      onTap: (context, project) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                TeammatesPage(projectId: project.id, projectName: project.name),
+          ),
+        );
+      },
+    ),
+    _WorkspaceAction(
+      icon: Iconsax.clipboard_text,
+      title: "Forms",
+      color: const Color(0xff9333EA),
+      onTap: (context, project) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => FormsScreen()),
+        );
+      },
+    ),
+  ];
+
   Widget _actionCard({
     required IconData icon,
     required String title,
@@ -777,11 +826,12 @@ class _AllProjectDetailsPageState extends ConsumerState<AllProjectDetailsPage> {
         decoration: BoxDecoration(
           color: _surface,
           borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xffE2E8F0)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
@@ -791,7 +841,11 @@ class _AllProjectDetailsPageState extends ConsumerState<AllProjectDetailsPage> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: color.withOpacity(.1),
+                gradient: LinearGradient(
+                  colors: [color.withOpacity(.18), color.withOpacity(.08)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Icon(icon, color: color, size: 26),
@@ -809,6 +863,140 @@ class _AllProjectDetailsPageState extends ConsumerState<AllProjectDetailsPage> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _locationSection(AllprojectModel project) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 520;
+
+        final locationInfo = Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Project location",
+                style: TextStyle(
+                  color: _text,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                project.locationLabel.isEmpty
+                    ? _orDash(project.siteAddress)
+                    : project.locationLabel,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: _subText,
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        );
+
+        final openButton = TextButton.icon(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ProjectLocationPage(project: project),
+              ),
+            );
+          },
+          style: TextButton.styleFrom(
+            foregroundColor: _primary,
+            backgroundColor: const Color(0xffEFF6FF),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          icon: const Icon(Iconsax.arrow_right_3, size: 16),
+          label: const Text(
+            "Open",
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+        );
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: _surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xffE2E8F0)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(.03),
+                blurRadius: 12,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 54,
+                          height: 54,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xff10B981), Color(0xff059669)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: const Icon(
+                            Iconsax.location,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(child: locationInfo),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(width: double.infinity, child: openButton),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Container(
+                      width: 54,
+                      height: 54,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xff10B981), Color(0xff059669)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: const Icon(
+                        Iconsax.location,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    locationInfo,
+                    const SizedBox(width: 12),
+                    openButton,
+                  ],
+                ),
+        );
+      },
     );
   }
 
@@ -934,4 +1122,18 @@ class _AllProjectDetailsPageState extends ConsumerState<AllProjectDetailsPage> {
     final text = value?.trim() ?? '';
     return text.isEmpty ? '-' : text;
   }
+}
+
+class _WorkspaceAction {
+  final IconData icon;
+  final String title;
+  final Color color;
+  final void Function(BuildContext context, AllprojectModel project) onTap;
+
+  const _WorkspaceAction({
+    required this.icon,
+    required this.title,
+    required this.color,
+    required this.onTap,
+  });
 }

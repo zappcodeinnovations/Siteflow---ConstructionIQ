@@ -1,15 +1,27 @@
 import 'dart:io';
 
 import 'package:euroside/modules/splash/splash_screen.dart';
+import 'package:euroside/navigation/app_route_observer.dart';
 import 'package:euroside/services/app_network_error_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:euroside/services/session_logout_router.dart';
 
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
+import 'package:euroside/services/fcm_service.dart';
+import 'package:euroside/services/auth_services.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    await AuthService.ensureDeviceIdCreated();
+  } catch (_) {}
+
+  try {
+    await FcmService.init();
+  } catch (_) {}
 
   /// WEBVIEW INITIALIZATION
   if (Platform.isAndroid) {
@@ -25,8 +37,11 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: SessionLogoutRouter.navigatorKey,
+      scaffoldMessengerKey: SessionLogoutRouter.scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
       title: 'Euro Side',
+      navigatorObservers: [appRouteObserver],
 
       theme: ThemeData(
         useMaterial3: true,

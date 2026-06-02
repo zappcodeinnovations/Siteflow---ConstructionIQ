@@ -13,8 +13,8 @@ class ClockService {
     try {
       final body = {
         "project_id": projectId,
-        "latitude": latitude,
-        "longitude": longitude,
+        "latitude": _formatCoordinate(latitude),
+        "longitude": _formatCoordinate(longitude),
         "notes": notes,
       };
 
@@ -37,6 +37,10 @@ class ClockService {
     if (response == null) {
       throw Exception("Empty response from server");
     }
+  }
+
+  static String _formatCoordinate(double value) {
+    return value.toStringAsFixed(6);
   }
 }
 

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:euroside/services/token_services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../modules/Project_photos/model/photos_model.dart';
 import '../network/api_endpoint.dart';
@@ -13,8 +14,11 @@ class ProjectImageService {
       "${ApiEndpoints.baseUrl}"
       "${ApiEndpoints.projectPhotos}";
 
+  static const String _photoTimestampPrefix = "project_photo_captured_at_";
+
   static Future<Map<String, dynamic>> uploadImage({
     required File imageFile,
+    DateTime? capturedAt,
   }) async {
     try {
       final token = await TokenManager.getAccessToken();
@@ -39,6 +43,10 @@ class ProjectImageService {
       request.files.add(
         await http.MultipartFile.fromPath("image", imageFile.path),
       );
+
+      if (capturedAt != null) {
+        request.fields["captured_at"] = capturedAt.toUtc().toIso8601String();
+      }
 
       /// ======================================================
       /// ✅ PRINT IMAGE DETAILS
@@ -75,7 +83,11 @@ class ProjectImageService {
 
       /// SUCCESS
       if (response.statusCode == 200 || response.statusCode == 201) {
-        return jsonDecode(response.body);
+        final decoded = jsonDecode(response.body);
+
+        await _cacheCapturedTimestamp(decoded, capturedAt);
+
+        return decoded;
       }
 
       throw Exception("Failed to upload image");
@@ -90,12 +102,17 @@ class ProjectImageService {
 
   static Future<List<Map<String, dynamic>>> uploadMultipleImages({
     required List<File> images,
+    Map<String, DateTime?>? capturedAtByPath,
   }) async {
     try {
       List<Map<String, dynamic>> uploadedImages = [];
 
       for (final image in images) {
-        final response = await uploadImage(imageFile: image);
+        final response = await uploadImage(
+          imageFile: image,
+
+          capturedAt: capturedAtByPath?[image.path],
+        );
 
         uploadedImages.add(response);
       }
@@ -140,7 +157,25 @@ class ProjectImageService {
 
         final List results = decoded["results"] ?? [];
 
-        return results.map((e) => ProjectPhotoModel.fromJson(e)).toList();
+        final photos = <ProjectPhotoModel>[];
+
+        for (final item in results) {
+          if (item is! Map<String, dynamic>) {
+            continue;
+          }
+
+          final cachedCreatedAt = await _getCachedCapturedTimestamp(item);
+
+          photos.add(
+            ProjectPhotoModel.fromJson(
+              item,
+
+              overrideCreatedAt: cachedCreatedAt,
+            ),
+          );
+        }
+
+        return photos;
       }
 
       /// UNAUTHORIZED
@@ -190,5 +225,51 @@ class ProjectImageService {
 
       rethrow;
     }
+  }
+
+  static Future<void> _cacheCapturedTimestamp(
+    dynamic responseData,
+    DateTime? capturedAt,
+  ) async {
+    if (capturedAt == null || responseData is! Map<String, dynamic>) {
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final storedValue = capturedAt.toUtc().toIso8601String();
+
+    final id = responseData["id"];
+    if (id != null) {
+      await prefs.setString("$_photoTimestampPrefix$id", storedValue);
+    }
+
+    final imageUrl = responseData["image_url"];
+    if (imageUrl != null) {
+      await prefs.setString("$_photoTimestampPrefix$imageUrl", storedValue);
+    }
+  }
+
+  static Future<DateTime?> _getCachedCapturedTimestamp(
+    Map<String, dynamic> photo,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final id = photo["id"];
+    if (id != null) {
+      final cachedById = prefs.getString("$_photoTimestampPrefix$id");
+      if (cachedById != null) {
+        return DateTime.tryParse(cachedById);
+      }
+    }
+
+    final imageUrl = photo["image_url"];
+    if (imageUrl != null) {
+      final cachedByUrl = prefs.getString("$_photoTimestampPrefix$imageUrl");
+      if (cachedByUrl != null) {
+        return DateTime.tryParse(cachedByUrl);
+      }
+    }
+
+    return null;
   }
 }

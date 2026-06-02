@@ -1,13 +1,22 @@
+import 'package:euroside/modules/Auth/view/auth_view.dart';
 import 'package:euroside/modules/Auth/provider/auth_provider.dart';
+import 'package:euroside/services/token_services.dart';
 import 'package:euroside/screens/nav_bar/main_navigation_screen.dart';
+import 'package:euroside/utils/google_fonts_fallback.dart';
+import 'package:euroside/utils/user_session_cache.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax/iconsax.dart';
 
 class SetPasswordScreen extends ConsumerStatefulWidget {
   final String email;
-  const SetPasswordScreen({super.key, required this.email});
+  final bool isForgotPassword;
+
+  const SetPasswordScreen({
+    super.key,
+    required this.email,
+    this.isForgotPassword = false,
+  });
 
   @override
   ConsumerState<SetPasswordScreen> createState() => _SetPasswordScreenState();
@@ -21,6 +30,16 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
 
   static const Color _accentBlue = Color(0xFF003DA5);
   static const Color _pageBg = Color(0xFFF5F6FA);
+
+  Future<void> _goToLogin() async {
+    ref.read(authControllerProvider.notifier).clearMessages();
+    await TokenManager.clearAll();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const SignInScreen()),
+      (route) => false,
+    );
+  }
 
   @override
   void initState() {
@@ -41,6 +60,16 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
     final password = _passwordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
 
+    print("🧪 [SET PASSWORD TEST] Button tapped for email=${widget.email}");
+
+    if (widget.isForgotPassword) {
+      final accessToken = await TokenManager.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) {
+        _showSnack('Please sign in first to change your password.');
+        return;
+      }
+    }
+
     if (password.isEmpty || confirmPassword.isEmpty) {
       _showSnack("Please fill in all fields");
       return;
@@ -60,16 +89,31 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
 
     if (!mounted) return;
     final state = ref.read(authControllerProvider);
+    print(
+      "🧪 [SET PASSWORD TEST] Completed for email=${widget.email} "
+      "success=$success error=${state.error}",
+    );
+
     if (state.error != null) {
       _showSnack(_friendlySetPasswordError(state.error!));
       return;
     }
     if (success) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const NavigationScreen()),
-        (route) => false,
-      );
+      if (widget.isForgotPassword) {
+        _goToLogin();
+      } else {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const NavigationScreen()),
+          (route) => false,
+        );
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            resetUserSessionCache(ref);
+          }
+        });
+      }
     }
   }
 
@@ -85,7 +129,11 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
   }
 
   String _friendlySetPasswordError(String error) {
-    final cleanedError = error.split('|BACKEND_JSON|').first.trim().toLowerCase();
+    final cleanedError = error
+        .split('|BACKEND_JSON|')
+        .first
+        .trim()
+        .toLowerCase();
 
     if (cleanedError.contains('password and confirm password must match') ||
         cleanedError.contains('passwords do not match') ||
@@ -160,7 +208,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
               Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: () => Navigator.maybePop(context),
+                  onTap: _goToLogin,
                   borderRadius: BorderRadius.circular(10),
                   child: Container(
                     width: 36,
@@ -203,7 +251,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
               // ── Title & subtitle ──────────────────────────────────────
               Center(
                 child: Text(
-                  'Reset Password',
+                  widget.isForgotPassword ? 'Reset Password' : 'Set Password',
                   style: GoogleFonts.inter(
                     fontSize: 26,
                     fontWeight: FontWeight.w700,
@@ -214,7 +262,9 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
               const SizedBox(height: 6),
               Center(
                 child: Text(
-                  'Create a secure password for your\nEuroside enterprise account',
+                  widget.isForgotPassword
+                      ? 'Update your password to keep your\nEuroside enterprise account secure'
+                      : 'Create a secure password for your\nEuroside enterprise account',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.inter(
                     fontSize: 13,
@@ -227,7 +277,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
               const SizedBox(height: 28),
 
               // ── Password ──────────────────────────────────────────────
-              _fieldLabel('Password*'),
+              _fieldLabel('Enter Your Password*'),
               const SizedBox(height: 8),
               _buildTextField(
                 controller: _passwordController,
@@ -516,7 +566,9 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
                           ),
                         )
                       : Text(
-                          'Reset Password',
+                          widget.isForgotPassword
+                              ? 'Reset Password'
+                              : 'Set Password',
                           style: GoogleFonts.inter(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
@@ -529,7 +581,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
 
               Center(
                 child: GestureDetector(
-                  onTap: () => Navigator.pop(context),
+                  onTap: _goToLogin,
                   child: RichText(
                     text: TextSpan(
                       style: GoogleFonts.inter(
@@ -539,7 +591,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
                       children: [
                         const TextSpan(text: 'Already have a password? '),
                         TextSpan(
-                          text: 'Loginin',
+                          text: 'Login',
                           style: GoogleFonts.inter(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,

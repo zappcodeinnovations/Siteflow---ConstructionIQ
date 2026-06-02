@@ -1,5 +1,4 @@
 class ProjectPhotoModel {
-
   final int id;
   final int operativeId;
 
@@ -10,8 +9,8 @@ class ProjectPhotoModel {
 
   final int fileSize;
 
-  final String createdAt;
-  final String updatedAt;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   ProjectPhotoModel({
     required this.id,
@@ -25,33 +24,35 @@ class ProjectPhotoModel {
   });
 
   factory ProjectPhotoModel.fromJson(
-    Map<String, dynamic> json,
-  ) {
-
+    Map<String, dynamic> json, {
+    DateTime? overrideCreatedAt,
+  }) {
     return ProjectPhotoModel(
-
       id: json["id"] ?? 0,
 
-      operativeId:
-          json["operative_id"] ?? 0,
+      operativeId: json["operative_id"] ?? 0,
 
-      image:
-          json["image"] ?? "",
+      image: json["image"] ?? "",
 
-      imageUrl:
-          json["image_url"] ?? "",
+      imageUrl: json["image_url"] ?? "",
 
-      fileName:
-          json["file_name"] ?? "",
+      fileName: json["file_name"] ?? "",
 
-      fileSize:
-          json["file_size"] ?? 0,
+      fileSize: json["file_size"] ?? 0,
 
-      createdAt:
-          json["created_at"] ?? "",
+      createdAt: overrideCreatedAt ?? _toDateTime(json["created_at"]),
 
-      updatedAt:
-          json["updated_at"] ?? "",
+      updatedAt: _toDateTime(json["updated_at"]),
     );
+  }
+
+  static DateTime? _toDateTime(dynamic value) {
+    final text = value?.toString();
+
+    if (text == null || text.isEmpty) {
+      return null;
+    }
+
+    return DateTime.tryParse(text);
   }
 }

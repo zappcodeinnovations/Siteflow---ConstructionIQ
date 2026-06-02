@@ -1,22 +1,29 @@
+import 'dart:convert';
+
 import 'dart:async';
 import 'package:euroside/modules/Auth/view/auth_view.dart';
 import 'package:euroside/modules/all_projects/provider/all_project_provider.dart';
-import 'package:euroside/modules/all_projects/view/all_project_view.dart';
 import 'package:euroside/modules/all_projects/view/project_details_view.dart';
 import 'package:euroside/modules/all_projects/model/all_project_model.dart';
-import 'package:euroside/modules/clock_in/view/clock_in_screen.dart';
+import 'package:euroside/modules/announcements/model/announcement_model.dart';
+import 'package:euroside/modules/announcements/provider/announcement_provider.dart';
+import 'package:euroside/modules/announcements/view/announcement.dart';
 import 'package:euroside/modules/clock_out/model/clock_out_model.dart';
 import 'package:euroside/modules/clock_out/provider/clock_provider.dart';
 import 'package:euroside/modules/form/provider/form_provider.dart';
-import 'package:euroside/modules/form/view/form_screen.dart';
-import 'package:euroside/modules/job/view/job_screen.dart';
+import 'package:euroside/modules/form/view/form_status_kpi_details_screen.dart';
+import 'package:euroside/modules/form/view/selected_job_forms_screen.dart';
+import 'package:euroside/modules/notifications/model/app_notification_model.dart';
+import 'package:euroside/modules/notifications/provider/notification_provider.dart';
 import 'package:euroside/modules/profile/provider/profile_provider.dart';
+import 'package:euroside/navigation/app_route_observer.dart';
 import 'package:euroside/services/current_clock_session_service.dart';
+import 'package:euroside/services/fcm_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:fluttertoast/fluttertoast.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:iconsax/iconsax.dart';
 
@@ -28,10 +35,11 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, RouteAware {
   static const String _clockedInKey = "isClockedIn";
   static const String _clockedInProjectIdKey = "clockedInProjectId";
   static const String _clockInStartMillisKey = "clockInStartMillis";
+  static const String _lastLocationTextKey = "lastKnownLocationText";
 
   String _currentLocation = "Fetching location...";
   String _clockedInProjectName = "";
@@ -49,10 +57,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   static const Color _accentLight = Color(0xFFEFF4FF);
   bool _locationPermissionDenied = false;
 
+  Future<void> _refreshKpis() async {
+    ref.invalidate(formStatusKpiProvider);
+    await ref.read(formStatusKpiProvider.future);
+  }
+
+  void _refreshUpdates() {
+    ref.invalidate(notificationsProvider);
+    ref.invalidate(announcementsProvider);
+  }
+
+  void _handlePushRefresh() {
+    if (!mounted) return;
+    _refreshUpdates();
+    unawaited(_refreshKpis());
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadCachedLocation();
+    unawaited(_requestStartupPermissions());
     _loadShiftState();
     _startTimer();
     Future.microtask(
@@ -61,10 +87,110 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     Future.microtask(
       () => ref.read(profileControllerProvider.notifier).getProfile(),
     );
+    Future.microtask(_refreshKpis);
+    Future.microtask(_refreshUpdates);
+    FcmService.notificationTick.addListener(_handlePushRefresh);
     // Future.microtask(() async {
     //   await _fetchCurrentLocation();
     //   await _setClockedInProjectName();
     // });
+  }
+
+  Future<void> _requestStartupPermissions() async {
+    await _fetchCurrentLocation();
+    if (!mounted) return;
+
+    // Let iOS finish any location prompt before showing the camera prompt.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
+
+    await _requestCameraPermission();
+  }
+
+  Future<void> _requestCameraPermission() async {
+    try {
+      final status = await Permission.camera.status;
+
+      if (status.isGranted) {
+        return;
+      }
+
+      final result = await Permission.camera.request();
+
+      if (!mounted) return;
+
+      if (result.isPermanentlyDenied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Camera permission is required. Please enable it in Settings.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      if (result.isDenied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Camera permission was denied.')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Camera permission error: $e');
+    }
+  }
+
+  Future<void> _loadCachedLocation() async {
+    final prefs = await SharedPreferences.getInstance();
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    final permission = await Geolocator.checkPermission();
+
+    if (!mounted) return;
+
+    final locationDenied =
+        !serviceEnabled ||
+        permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever;
+
+    if (locationDenied) {
+      setState(() {
+        _currentLocation = 'Location permission required';
+        _locationPermissionDenied = true;
+      });
+
+      return;
+    }
+
+    final cachedLocation = prefs.getString(_lastLocationTextKey);
+
+    if (cachedLocation != null && cachedLocation.trim().isNotEmpty) {
+      setState(() {
+        _currentLocation = cachedLocation;
+        _locationPermissionDenied =
+            cachedLocation == "Location permission required";
+      });
+    }
+  }
+
+  Future<void> _setCurrentLocationText(String value) async {
+    if (!mounted) return;
+
+    setState(() {
+      _currentLocation = value;
+      _locationPermissionDenied = value == "Location permission required";
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastLocationTextKey, value);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      appRouteObserver.subscribe(this, route);
+    }
   }
 
   void handleSessionExpired(BuildContext context, Object error) {
@@ -84,7 +210,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
       if (!serviceEnabled) {
         setState(() {
-          _currentLocation = "No permission for location";
+          _currentLocation = "Location permission required";
+          _locationPermissionDenied = true;
         });
 
         return;
@@ -98,14 +225,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        setState(() {
-          _currentLocation = "No permission for location";
-        });
+        await _setCurrentLocationText("Location permission required");
 
         return;
       }
 
+      final lastKnownPosition = await Geolocator.getLastKnownPosition();
+
+      if (lastKnownPosition != null) {
+        await _setCurrentLocationText(
+          "${lastKnownPosition.latitude.toStringAsFixed(6)}, ${lastKnownPosition.longitude.toStringAsFixed(6)}",
+        );
+      }
+
       final position = await Geolocator.getCurrentPosition();
+
+      await _setCurrentLocationText(
+        "${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}",
+      );
 
       final placemarks = await placemarkFromCoordinates(
         position.latitude,
@@ -114,16 +251,39 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
       if (placemarks.isNotEmpty) {
         final place = placemarks.first;
+        final detailedAddress = _formatDetailedAddress(place);
 
-        setState(() {
-          _currentLocation = "${place.locality}, ${place.administrativeArea}";
-        });
+        if (detailedAddress.isNotEmpty) {
+          await _setCurrentLocationText(detailedAddress);
+        }
+      } else {
+        await _setCurrentLocationText(
+          "${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}",
+        );
       }
     } catch (e) {
-      setState(() {
-        _currentLocation = "No permission for location";
-      });
+      await _setCurrentLocationText("Location permission required");
     }
+  }
+
+  String _formatDetailedAddress(Placemark place) {
+    final parts = <String>[
+      place.subThoroughfare?.trim() ?? '',
+      place.thoroughfare?.trim() ?? '',
+      place.subLocality?.trim() ?? '',
+      place.locality?.trim() ?? '',
+      place.administrativeArea?.trim() ?? '',
+      place.postalCode?.trim() ?? '',
+      place.country?.trim() ?? '',
+    ];
+
+    final cleaned = parts.where((part) => part.isNotEmpty).toList();
+
+    if (cleaned.isEmpty) {
+      return '';
+    }
+
+    return cleaned.join(', ');
   }
   // Future<void> _setClockedInProjectName() async {
   //   try {
@@ -149,7 +309,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _loadShiftState();
+      _refreshKpis();
     }
+  }
+
+  @override
+  void didPush() {
+    _loadShiftState();
+    _refreshKpis();
+  }
+
+  @override
+  void didPopNext() {
+    _loadShiftState();
+    _refreshKpis();
+  }
+
+  @override
+  void dispose() {
+    appRouteObserver.unsubscribe(this);
+    FcmService.notificationTick.removeListener(_handlePushRefresh);
+    WidgetsBinding.instance.removeObserver(this);
+    _timer?.cancel();
+    super.dispose();
   }
 
   Future<void> _refreshDashboard() async {
@@ -158,6 +340,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         .read(AllprojectControllerProvider.notifier)
         .fetchProjects(force: true);
     await ref.read(profileControllerProvider.notifier).getProfile();
+    await _refreshKpis();
+    _refreshUpdates();
   }
 
   Future<void> _openClockedInProjectDetails(int projectId) async {
@@ -299,7 +483,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           error.contains('submit') ||
           error.contains('required') ||
           error.contains('fill')) {
-        _showFormRequiredDialog();
+        _showFormRequiredDialog(jobId: _extractJobIdFromError(e.toString()));
         return;
       }
 
@@ -315,7 +499,56 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     }
   }
 
-  void _showFormRequiredDialog() {
+  int? _extractJobIdFromError(String error) {
+    const marker = '|BACKEND_JSON|';
+    final markerIndex = error.indexOf(marker);
+    final jsonText = markerIndex != -1
+        ? error.substring(markerIndex + marker.length).trim()
+        : error.contains('{')
+        ? error.substring(error.indexOf('{')).trim()
+        : '';
+
+    if (jsonText.isEmpty) return null;
+
+    try {
+      final decoded = jsonDecode(jsonText);
+      if (decoded is Map<String, dynamic>) {
+        final forms = decoded['missing_required_forms'];
+        if (forms is List && forms.isNotEmpty) {
+          final counts = <int, int>{};
+
+          for (final item in forms) {
+            if (item is! Map<String, dynamic>) continue;
+
+            final rawJobId = item['job_id'];
+            final parsedJobId = rawJobId is int
+                ? rawJobId
+                : int.tryParse(rawJobId?.toString() ?? '');
+
+            if (parsedJobId == null) continue;
+
+            counts[parsedJobId] = (counts[parsedJobId] ?? 0) + 1;
+          }
+
+          if (counts.isNotEmpty) {
+            final selectedJobId = counts.entries
+                .reduce((a, b) => a.value >= b.value ? a : b)
+                .key;
+
+            debugPrint(
+              '📌 CLOCK OUT POPUP JOB ID => $selectedJobId (from missing_required_forms)',
+            );
+
+            return selectedJobId;
+          }
+        }
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  void _showFormRequiredDialog({int? jobId}) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -398,10 +631,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                         onPressed: () async {
                           Navigator.pop(context);
 
+                          if (jobId == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Unable to open the task sheet for this job.',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+
                           await Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => const FormsScreen(),
+                              builder: (_) =>
+                                  SelectedJobFormsScreen(jobId: jobId),
                             ),
                           );
                         },
@@ -420,6 +665,34 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         );
       },
     );
+  }
+
+  Future<bool> _restoreShiftStateFromCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isClockedIn = prefs.getBool(_clockedInKey) ?? false;
+    final startMillis = prefs.getInt(_clockInStartMillisKey);
+
+    if (!isClockedIn || startMillis == null) {
+      return false;
+    }
+
+    final elapsedMillis = DateTime.now().millisecondsSinceEpoch - startMillis;
+    final safeElapsedMillis = elapsedMillis > 0 ? elapsedMillis : 0;
+
+    if (!mounted) return true;
+
+    setState(() {
+      _isClockedIn = true;
+      _shiftDuration = Duration(milliseconds: safeElapsedMillis);
+
+      if (_clockedInProjectName.isEmpty ||
+          _clockedInProjectName == "No active project") {
+        _clockedInProjectName = "Clocked in project";
+      }
+    });
+
+    _fetchCurrentLocation();
+    return true;
   }
 
   Future<void> _loadShiftState() async {
@@ -444,36 +717,42 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         /// LOAD LOCATION FAST
         _fetchCurrentLocation();
       } else {
-        setState(() {
-          _isClockedIn = false;
+        final restoredFromCache = await _restoreShiftStateFromCache();
 
-          _shiftDuration = Duration.zero;
+        if (!restoredFromCache && mounted) {
+          setState(() {
+            _isClockedIn = false;
 
-          _clockedInProjectName = "No active project";
+            _shiftDuration = Duration.zero;
 
-          _currentLocation = "Location unavailable";
-        });
+            _clockedInProjectName = "No active project";
+
+            _currentLocation = "Location unavailable";
+          });
+        }
       }
     } catch (e) {
       debugPrint("Session fetch error: $e");
+
+      final restoredFromCache = await _restoreShiftStateFromCache();
+
+      if (!restoredFromCache && mounted) {
+        setState(() {
+          _isClockedIn = false;
+          _shiftDuration = Duration.zero;
+        });
+      }
     }
   }
 
   void _startTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_isClockedIn) {
+      if (_isClockedIn && !_locationPermissionDenied) {
         setState(() {
           _shiftDuration += const Duration(seconds: 1);
         });
       }
     });
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _timer?.cancel();
-    super.dispose();
   }
 
   String get _formattedTime {
@@ -489,6 +768,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final userEmail = profileState.profile?.email ?? "User";
     final projectState = ref.watch(AllprojectControllerProvider);
     final kpiState = ref.watch(formStatusKpiProvider);
+    final notificationsState = ref.watch(notificationsProvider);
+    final announcementsState = ref.watch(announcementsProvider);
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
@@ -660,107 +941,111 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                   ),
                                 ),
                                 const SizedBox(width: 16),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _isClockedIn
-                                          ? "Shift Duration"
-                                          : "Not Clocked In",
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: _isClockedIn
-                                            ? Colors.white.withOpacity(0.75)
-                                            : _ink2,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-
-                                    const SizedBox(height: 4),
-
-                                    Text(
-                                      _isClockedIn
-                                          ? _formattedTime
-                                          : "--:--:--",
-                                      style: TextStyle(
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.w700,
-                                        color: _isClockedIn
-                                            ? Colors.white
-                                            : _ink,
-                                        letterSpacing: 1.5,
-                                      ),
-                                    ),
-
-                                    if (_isClockedIn) ...[
-                                      const SizedBox(height: 14),
-
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 10,
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _isClockedIn
+                                            ? "Shift Duration"
+                                            : "Not Clocked In",
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: _isClockedIn
+                                              ? Colors.white.withOpacity(0.75)
+                                              : _ink2,
+                                          fontWeight: FontWeight.w500,
                                         ),
+                                      ),
 
-                                        // decoration: BoxDecoration(
-                                        //   color: Colors.white.withOpacity(0.12),
-                                        //   borderRadius: BorderRadius.circular(
-                                        //     12,
-                                        //   ),
-                                        //   border: Border.all(
-                                        //     color: Colors.white.withOpacity(
-                                        //       0.12,
-                                        //     ),
-                                        //   ),
-                                        // ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const Icon(
-                                              Iconsax.location,
-                                              size: 15,
-                                              color: Colors.white,
-                                            ),
+                                      const SizedBox(height: 4),
 
-                                            const SizedBox(width: 8),
+                                      Text(
+                                        _isClockedIn
+                                            ? (_locationPermissionDenied
+                                                  ? "Location permission required"
+                                                  : _formattedTime)
+                                            : "--:--:--",
+                                        style: TextStyle(
+                                          fontSize: 25,
+                                          fontWeight: FontWeight.w700,
+                                          color:
+                                              (_isClockedIn &&
+                                                  !_locationPermissionDenied)
+                                              ? Colors.white
+                                              : const Color.fromARGB(255, 237, 237, 238),
+                                          letterSpacing: 1.1,
+                                        ),
+                                      ),
 
-                                            Flexible(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    "Operative Location",
-                                                    style: TextStyle(
-                                                      fontSize: 10,
-                                                      color: Colors.white
-                                                          .withOpacity(0.7),
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                    ),
-                                                  ),
+                                      if (_isClockedIn &&
+                                          !_locationPermissionDenied) ...[
+                                        const SizedBox(height: 14),
 
-                                                  const SizedBox(height: 2),
+                                        Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 10,
+                                          ),
 
-                                                  Text(
-                                                    _currentLocation,
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      fontSize: 13,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                      color: Colors.white,
-                                                    ),
-                                                  ),
-                                                ],
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                _locationPermissionDenied
+                                                    ? Iconsax.warning_2
+                                                    : Iconsax.location,
+                                                size: 15,
+                                                color: Colors.white,
                                               ),
-                                            ),
-                                          ],
+
+                                              const SizedBox(width: 8),
+
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      _locationPermissionDenied
+                                                          ? "Location Permission Required"
+                                                          : "Operative Location",
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: Colors.white
+                                                            .withOpacity(0.7),
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
+                                                    ),
+
+                                                    const SizedBox(height: 2),
+
+                                                    Text(
+                                                      _locationPermissionDenied
+                                                          ? "Enable location permission to show your live operative location."
+                                                          : _currentLocation,
+                                                      maxLines: 2,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      softWrap: true,
+                                                      style: const TextStyle(
+                                                        fontSize: 10,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
-                                      ),
+                                      ],
                                     ],
-                                  ],
+                                  ),
                                 ),
                               ],
                             ),
@@ -769,7 +1054,41 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                           const SizedBox(height: 28),
 
                           // ── STATS SECTION TITLE ──────────────────────────────────
-                          _sectionTitle("Form Stats", Iconsax.chart_1),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _sectionTitle("Form Stats", Iconsax.chart_1),
+                              TextButton.icon(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const FormStatusKpiDetailsScreen(),
+                                    ),
+                                  );
+                                },
+                                style: TextButton.styleFrom(
+                                  foregroundColor: _accent,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
+                                  ),
+                                ),
+                                icon: const Icon(
+                                  Iconsax.arrow_right_3,
+                                  size: 14,
+                                ),
+                                label: const Text(
+                                  'See all',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
 
                           const SizedBox(height: 12),
 
@@ -811,7 +1130,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: _statCard(
-                                          "Not Signature",
+                                          "Pending\nSignature",
                                           notSignature,
                                           _StatStyle.red,
                                         ),
@@ -912,6 +1231,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                           ],
                           const SizedBox(height: 28),
 
+                          _buildUpdatesSection(
+                            notificationsState,
+                            announcementsState,
+                          ),
+
+                          const SizedBox(height: 28),
+
                           _sectionTitle("Clocked In Project", Iconsax.chart_1),
                           const SizedBox(height: 10),
 
@@ -924,7 +1250,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
                                     if (!mounted) return;
 
-                                    final sessionData = session?.data;
+                                    final sessionData = session.data;
                                     if (sessionData == null) {
                                       ScaffoldMessenger.of(
                                         context,
@@ -1059,11 +1385,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                                 Expanded(
                                                   child: Text(
                                                     _currentLocation,
-                                                    maxLines: 1,
+                                                    maxLines: 2,
                                                     overflow:
                                                         TextOverflow.ellipsis,
+                                                    softWrap: true,
                                                     style: const TextStyle(
-                                                      fontSize: 12,
+                                                      fontSize: 11,
                                                       fontWeight:
                                                           FontWeight.w500,
                                                       color: _ink2,
@@ -1381,6 +1708,287 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
   }
 
+  Widget _buildUpdatesSection(
+    AsyncValue<List<AppNotificationModel>> notificationsState,
+    AsyncValue<List<AnnouncementModel>> announcementsState,
+  ) {
+    final notifications = _visibleNotifications(
+      notificationsState.valueOrNull ?? const [],
+    ).take(4).toList();
+    final announcements = _visibleAnnouncements(
+      announcementsState.valueOrNull ?? const [],
+    ).take(4).toList();
+
+    if (notifications.isEmpty && announcements.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    if (notifications.isNotEmpty && announcements.isEmpty) {
+      return _buildSingleUpdatesPanel(
+        title: 'Notifications',
+        icon: Iconsax.notification,
+        child: _buildNotificationsList(notifications),
+      );
+    }
+
+    if (announcements.isNotEmpty && notifications.isEmpty) {
+      return _buildSingleUpdatesPanel(
+        title: 'Announcements',
+        icon: Icons.campaign_rounded,
+        child: _buildAnnouncementsList(announcements),
+      );
+    }
+
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionTitle("Updates", Iconsax.notification),
+          const SizedBox(height: 12),
+          Container(
+            height: 42,
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF4FF),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: TabBar(
+              dividerColor: Colors.transparent,
+              indicatorSize: TabBarIndicatorSize.tab,
+              indicator: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(9),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              labelColor: _accent,
+              unselectedLabelColor: _ink2,
+              labelStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+              tabs: const [
+                Tab(text: 'Notifications'),
+                Tab(text: 'Announcements'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: announcements.length <= 1 && notifications.length <= 1
+                ? 120
+                : announcements.length <= 2 && notifications.length <= 2
+                ? 200
+                : 292,
+            child: TabBarView(
+              children: [
+                _buildNotificationsList(notifications),
+                _buildAnnouncementsList(announcements),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSingleUpdatesPanel({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(title, icon),
+        const SizedBox(height: 12),
+        SizedBox(height: child is ListView ? 160 : 120, child: child),
+      ],
+    );
+  }
+
+  List<AppNotificationModel> _visibleNotifications(
+    List<AppNotificationModel> items,
+  ) {
+    return items.where((item) {
+      return item.title.trim().isNotEmpty || item.message.trim().isNotEmpty;
+    }).toList();
+  }
+
+  List<AnnouncementModel> _visibleAnnouncements(List<AnnouncementModel> items) {
+    return items.where((item) {
+      return item.isActive &&
+          (item.title.trim().isNotEmpty || item.message.trim().isNotEmpty);
+    }).toList();
+  }
+
+  Widget _buildNotificationsList(List<AppNotificationModel> items) {
+    return ListView.separated(
+      padding: EdgeInsets.zero,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final item = items[index];
+        return _updateTile(
+          icon: Iconsax.notification,
+          iconBg: item.isRead
+              ? const Color(0xFFF1F5F9)
+              : const Color(0xFFEFF4FF),
+          iconColor: item.isRead ? _ink2 : _accent,
+          title: item.title,
+          message: item.message,
+          meta: [
+            if (item.projectName.isNotEmpty) item.projectName,
+            if (item.createdAt != null) _formatShortDate(item.createdAt!),
+          ].join(' • '),
+        );
+      },
+    );
+  }
+
+  Widget _buildAnnouncementsList(List<AnnouncementModel> items) {
+    return ListView.separated(
+      padding: EdgeInsets.zero,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final item = items[index];
+        final createdAt = DateTime.tryParse(item.createdAt);
+
+        return InkWell(
+          borderRadius: BorderRadius.circular(14),
+
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AnnouncementPage(
+                  projectId: item.projectId,
+                  projectName: item.projectName,
+                ),
+              ),
+            );
+          },
+
+          child: _updateTile(
+            icon: Icons.campaign_rounded,
+            iconBg: const Color(0xFFFFF7ED),
+            iconColor: const Color(0xFFF97316),
+            title: item.title,
+            message: item.message,
+            meta: [
+              if (item.projectName.isNotEmpty) item.projectName,
+              if (createdAt != null) _formatShortDate(createdAt),
+            ].join(' • '),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _updateTile({
+    required IconData icon,
+    required Color iconBg,
+    required Color iconColor,
+    required String title,
+    required String message,
+    required String meta,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: iconColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (title.trim().isNotEmpty) ...[
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: _ink,
+                    ),
+                  ),
+                  if (message.trim().isNotEmpty) const SizedBox(height: 4),
+                ],
+                if (message.trim().isNotEmpty)
+                  Text(
+                    message,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      height: 1.35,
+                      color: _ink2,
+                    ),
+                  ),
+                if (meta.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    meta,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 10, color: _ink2),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatShortDate(DateTime value) {
+    final local = value.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '$day/$month/${local.year} $hour:$minute';
+  }
+
   bool _isNetworkError(String? message) {
     if (message == null) return false;
 
@@ -1469,6 +2077,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
   Widget _statCard(String label, int count, _StatStyle style) {
     return Container(
+      height: 93,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: _surface,

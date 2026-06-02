@@ -24,10 +24,22 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Euro Side uses the camera to take and upload project photos, forms, and site documentation.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Euro Side uses your location while the app is open to verify site attendance and clock-in activity.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Euro Side needs access to your photo library so you can select and upload project photos, forms, and site documentation.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Euro Side may save project photos and site documentation to your photo library when requested.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

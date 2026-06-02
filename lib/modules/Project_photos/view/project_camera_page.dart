@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:iconsax/iconsax.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:photo_view/photo_view.dart';
 
 class ProjectCameraPage extends StatefulWidget {
@@ -19,12 +20,27 @@ class _ProjectCameraPageState extends State<ProjectCameraPage> {
   CameraController? _cameraController;
 
   List<XFile> capturedPhotos = [];
+  final Map<String, DateTime> _capturedPhotoTimes = {};
   bool isLoading = true;
+  bool _permissionDenied = false;
   bool isRearCamera = true;
   double currentZoom = 1.0;
   double maxZoom = 1.0;
   double minZoom = 1.0;
   FlashMode currentFlash = FlashMode.off;
+  bool _screenFlashEnabled = false;
+  bool _showCaptureFlash = false;
+
+  Future<void> _handleCameraPermissionDenied() async {
+    if (!mounted) return;
+
+    setState(() {
+      isLoading = false;
+      _permissionDenied = true;
+    });
+
+    _showPermissionDialog();
+  }
 
   @override
   void initState() {
@@ -41,6 +57,12 @@ class _ProjectCameraPageState extends State<ProjectCameraPage> {
 
     /// Permission already granted
     if (status.isGranted) {
+      if (mounted) {
+        setState(() {
+          _permissionDenied = false;
+        });
+      }
+
       await _initializeCamera();
       return;
     }
@@ -50,59 +72,227 @@ class _ProjectCameraPageState extends State<ProjectCameraPage> {
 
     /// User allowed permission
     if (result.isGranted) {
+      if (mounted) {
+        setState(() {
+          _permissionDenied = false;
+        });
+      }
+
       await _initializeCamera();
       return;
     }
 
     /// Permanently denied
     if (result.isPermanentlyDenied) {
-      if (mounted) {
-        _showPermissionDialog();
-      }
-
-      /// Close camera page instantly
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted) {
-          Navigator.pop(context);
-        }
-      });
+      await _handleCameraPermissionDenied();
 
       return;
     }
 
     /// Normal denied
-    /// Directly close page
-    if (mounted) {
-      Navigator.pop(context);
-    }
+    await _handleCameraPermissionDenied();
   }
 
   void _showPermissionDialog() {
-    showDialog(
+    if (!mounted) return;
+
+    showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Camera Permission Required'),
-        content: const Text(
-          'Please allow camera permission from settings to use camera.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: const Text('Cancel'),
+      barrierColor: Colors.black.withOpacity(0.7),
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 24,
           ),
-
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await openAppSettings();
-            },
-            child: const Text('Open Settings'),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF0F172A),
+                      const Color(0xFF111827),
+                      const Color(0xFF1E293B),
+                    ],
+                  ),
+                  border: Border.all(color: Colors.white.withOpacity(0.08)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.35),
+                      blurRadius: 32,
+                      offset: const Offset(0, 18),
+                    ),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(22),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 54,
+                            height: 54,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  const Color(0xFF60A5FA),
+                                  const Color(0xFF2563EB),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: const Icon(
+                              Icons.no_photography_outlined,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Camera permission required',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
+                                    height: 1.15,
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Enable camera access in settings to capture project photos.',
+                                  style: TextStyle(
+                                    color: Color(0xFFCBD5E1),
+                                    fontSize: 14,
+                                    height: 1.45,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 22),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.08),
+                          ),
+                        ),
+                        child: const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _PermissionStepItem(
+                              index: '1',
+                              text: 'Tap Open Settings below.',
+                            ),
+                            SizedBox(height: 10),
+                            _PermissionStepItem(
+                              index: '2',
+                              text: 'Open Permissions for this app.',
+                            ),
+                            SizedBox(height: 10),
+                            _PermissionStepItem(
+                              index: '3',
+                              text: 'Allow Camera access.',
+                            ),
+                            SizedBox(height: 10),
+                            _PermissionStepItem(
+                              index: '4',
+                              text: 'Return here and tap Retry.',
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () {
+                                Navigator.pop(dialogContext);
+                              },
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: BorderSide(
+                                  color: Colors.white.withOpacity(0.22),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: const Text('Not now'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () async {
+                                Navigator.pop(dialogContext);
+                                await openAppSettings();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xff2563EB),
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: const Text('Open Settings'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.pop(dialogContext);
+                            _checkAndInitCamera();
+                          },
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF93C5FD),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Text('Retry permission check'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -152,7 +342,8 @@ class _ProjectCameraPageState extends State<ProjectCameraPage> {
       maxZoom = await _cameraController!.getMaxZoomLevel();
 
       /// FLASH
-      await _cameraController!.setFlashMode(currentFlash);
+      final flashMode = isRearCamera ? currentFlash : FlashMode.off;
+      await _cameraController!.setFlashMode(flashMode);
 
       debugPrint("✅ CAMERA INITIALIZED");
 
@@ -186,15 +377,32 @@ class _ProjectCameraPageState extends State<ProjectCameraPage> {
         return;
       }
 
+      if (!isRearCamera && _screenFlashEnabled) {
+        setState(() {
+          _showCaptureFlash = true;
+        });
+
+        await Future.delayed(const Duration(milliseconds: 70));
+      }
+
       final image = await _cameraController!.takePicture();
+      final capturedAt = DateTime.now();
 
       setState(() {
         capturedPhotos.insert(0, image);
+
+        _capturedPhotoTimes[image.path] = capturedAt;
       });
 
       HapticFeedback.mediumImpact();
     } catch (e) {
       debugPrint("CAPTURE ERROR: $e");
+    } finally {
+      if (mounted && _showCaptureFlash) {
+        setState(() {
+          _showCaptureFlash = false;
+        });
+      }
     }
   }
 
@@ -203,6 +411,9 @@ class _ProjectCameraPageState extends State<ProjectCameraPage> {
       setState(() {
         isLoading = true;
         isRearCamera = !isRearCamera;
+        currentFlash = FlashMode.off;
+        _screenFlashEnabled = false;
+        _showCaptureFlash = false;
       });
 
       await _initializeCamera();
@@ -235,6 +446,12 @@ class _ProjectCameraPageState extends State<ProjectCameraPage> {
       /// CONVERT XFILE TO FILE
       final files = capturedPhotos.map((e) => File(e.path)).toList();
 
+      final capturedAtByPath = <String, DateTime?>{};
+
+      for (final photo in capturedPhotos) {
+        capturedAtByPath[photo.path] = _capturedPhotoTimes[photo.path];
+      }
+
       /// PRINT ALL FILES
       for (final file in files) {
         debugPrint("🖼️ IMAGE PATH: ${file.path}");
@@ -248,6 +465,8 @@ class _ProjectCameraPageState extends State<ProjectCameraPage> {
       /// API CALL
       final response = await ProjectImageService.uploadMultipleImages(
         images: files,
+
+        capturedAtByPath: capturedAtByPath,
       );
 
       debugPrint("✅ UPLOAD RESPONSE: $response");
@@ -284,15 +503,21 @@ class _ProjectCameraPageState extends State<ProjectCameraPage> {
   Future<void> _toggleFlash() async {
     if (_cameraController == null) return;
 
-    if (currentFlash == FlashMode.off) {
-      currentFlash = FlashMode.torch;
+    if (isRearCamera) {
+      if (currentFlash == FlashMode.off) {
+        currentFlash = FlashMode.torch;
+      } else {
+        currentFlash = FlashMode.off;
+      }
+
+      await _cameraController!.setFlashMode(currentFlash);
     } else {
-      currentFlash = FlashMode.off;
+      _screenFlashEnabled = !_screenFlashEnabled;
     }
 
-    await _cameraController!.setFlashMode(currentFlash);
-
-    setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _openPreview(int initialIndex) {
@@ -323,15 +548,103 @@ class _ProjectCameraPageState extends State<ProjectCameraPage> {
     return Scaffold(
       backgroundColor: Colors.black,
 
-      body:
-          isLoading ||
-              _cameraController == null ||
-              !_cameraController!.value.isInitialized
+      body: _permissionDenied
+          ? SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 84,
+                        height: 84,
+
+                        decoration: BoxDecoration(
+                          color: Colors.white10,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+
+                        child: const Icon(
+                          Icons.no_photography_outlined,
+                          color: Colors.white,
+                          size: 40,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Camera access is turned off',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Open settings, allow Camera permission, then return here and tap Retry.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(.75),
+                          height: 1.4,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _checkAndInitCamera,
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                side: const BorderSide(color: Colors.white54),
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Retry'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () async {
+                                await openAppSettings();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xff2563EB),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                              ),
+                              child: const Text('Open Settings'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          : isLoading ||
+                _cameraController == null ||
+                !_cameraController!.value.isInitialized
           ? const Center(child: CircularProgressIndicator())
           : Stack(
               children: [
                 /// CAMERA PREVIEW
                 Positioned.fill(child: CameraPreview(_cameraController!)),
+
+                if (_showCaptureFlash)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Container(color: Colors.white.withOpacity(0.82)),
+                    ),
+                  ),
 
                 /// TOP BAR
                 Positioned(
@@ -351,9 +664,13 @@ class _ProjectCameraPageState extends State<ProjectCameraPage> {
                       Row(
                         children: [
                           _topButton(
-                            currentFlash == FlashMode.torch
-                                ? Icons.flash_on
-                                : Icons.flash_off,
+                            isRearCamera
+                                ? (currentFlash == FlashMode.torch
+                                      ? Icons.flash_on
+                                      : Icons.flash_off)
+                                : (_screenFlashEnabled
+                                      ? Icons.flash_on
+                                      : Icons.flash_off),
 
                             _toggleFlash,
                           ),
@@ -727,6 +1044,51 @@ class _GalleryPreviewPageState extends State<GalleryPreviewPage> {
           );
         },
       ),
+    );
+  }
+}
+
+class _PermissionStepItem extends StatelessWidget {
+  final String index;
+  final String text;
+
+  const _PermissionStepItem({required this.index, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 26,
+          height: 26,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: Colors.white.withOpacity(0.12)),
+          ),
+          child: Text(
+            index,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Color(0xFFE2E8F0),
+              fontSize: 13,
+              height: 1.45,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

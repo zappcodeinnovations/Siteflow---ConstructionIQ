@@ -1,9 +1,8 @@
 import 'package:euroside/modules/form/model/form_model.dart';
 import 'package:euroside/modules/form/provider/form_provider.dart';
-import 'package:euroside/modules/form/view/form.dart';
+import 'package:euroside/modules/form/view/selected_job_forms_screen.dart';
 import 'package:euroside/modules/job/model/job_model.dart';
 import 'package:euroside/modules/job/provider/job_provider.dart';
-import 'package:euroside/network/api_endpoint.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -58,39 +57,13 @@ class _JobListScreenState extends ConsumerState<JobListScreen> {
         return;
       }
 
-      var formId = job.formId;
-
-      if (formId == 0) {
-        final forms = await ref.read(formsListProvider.future);
-        for (final form in forms) {
-          if (form.name == job.formName) {
-            formId = form.id;
-            break;
-          }
-        }
-      }
-
-      if (formId == 0) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Form not found for ${job.formName}.'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        return;
-      }
-
       if (!mounted) return;
 
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => UserFormWebViewPage(
-            title: job.formName,
-            endpoint: ApiEndpoints.userFormHtml(formId),
-            accessToken: accessToken,
-          ),
+          builder: (_) =>
+              SelectedJobFormsScreen(jobId: job.id, jobTitle: job.formName),
         ),
       );
     } catch (e) {
@@ -261,8 +234,7 @@ class _CreateDayJobSheetState extends ConsumerState<_CreateDayJobSheet> {
   final _siteContactController = TextEditingController();
   final _instructionsController = TextEditingController();
 
-  String? _selectedFormName;
-  int? _selectedFormId;
+  List<FormItem> _selectedForms = [];
   bool _isSubmitting = false;
   String? _errorText;
 
@@ -285,10 +257,22 @@ class _CreateDayJobSheetState extends ConsumerState<_CreateDayJobSheet> {
     return raw.split('|BACKEND_JSON|').first.trim();
   }
 
+  String _selectedFormsLabel() {
+    if (_selectedForms.isEmpty) {
+      return 'Select one or more forms';
+    }
+
+    if (_selectedForms.length == 1) {
+      return _selectedForms.first.name;
+    }
+
+    return '${_selectedForms.length} forms selected';
+  }
+
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    if (_selectedFormName == null || _selectedFormName!.isEmpty) {
-      setState(() => _errorText = 'Please select a form name.');
+    if (_selectedForms.isEmpty) {
+      setState(() => _errorText = 'Please select at least one form.');
       return;
     }
 
@@ -298,18 +282,20 @@ class _CreateDayJobSheetState extends ConsumerState<_CreateDayJobSheet> {
     });
 
     try {
-      await ref
-          .read(jobControllerProvider)
-          .createJob(
-            projectId: widget.projectId,
-            reference: _referenceController.text.trim(),
-            formName: _selectedFormName!,
-            formId: _selectedFormId!,
-            siteContact: _siteContactController.text.trim(),
-            instructions: _instructionsController.text.trim(),
-          );
+      final jobController = ref.read(jobControllerProvider);
+
+      final selectedFormIds = _selectedForms.map((form) => form.id).toList();
+
+      await jobController.createJob(
+        projectId: widget.projectId,
+        reference: _referenceController.text.trim(),
+        formIds: selectedFormIds,
+        siteContact: _siteContactController.text.trim(),
+        instructions: _instructionsController.text.trim(),
+      );
 
       if (!mounted) return;
+
       Navigator.of(context).pop(true);
     } catch (e) {
       setState(() => _errorText = _cleanErrorMessage(e));
@@ -404,13 +390,12 @@ class _CreateDayJobSheetState extends ConsumerState<_CreateDayJobSheet> {
                   _SheetLabel('Form Name'),
                   const SizedBox(height: 8),
                   formsAsync.when(
-                    data: (forms) => _FormDropdown(
+                    data: (forms) => _MultiFormSelector(
                       forms: forms,
-                      value: _selectedFormName,
-                      onChanged: (value, formId) {
+                      selectedForms: _selectedForms,
+                      onChanged: (selectedForms) {
                         setState(() {
-                          _selectedFormName = value;
-                          _selectedFormId = formId;
+                          _selectedForms = selectedForms;
                         });
                       },
                     ),
@@ -493,63 +478,272 @@ class _CreateDayJobSheetState extends ConsumerState<_CreateDayJobSheet> {
 
 class _FormDropdown extends StatelessWidget {
   final List<FormItem> forms;
-  final String? value;
-  final Function(String?, int?) onChanged;
+  final List<FormItem> selectedForms;
+  final ValueChanged<List<FormItem>> onChanged;
 
   const _FormDropdown({
     required this.forms,
-    required this.value,
+    required this.selectedForms,
     required this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<String>(
-      initialValue: value,
+    return _MultiFormSelector(
+      forms: forms,
+      selectedForms: selectedForms,
+      onChanged: onChanged,
+    );
+  }
+}
 
-      items: forms.map((form) {
-        return DropdownMenuItem<String>(
-          value: form.name,
+class _MultiFormSelector extends StatelessWidget {
+  final List<FormItem> forms;
+  final List<FormItem> selectedForms;
+  final ValueChanged<List<FormItem>> onChanged;
 
-          onTap: () {
-            onChanged(form.name, form.id);
+  const _MultiFormSelector({
+    required this.forms,
+    required this.selectedForms,
+    required this.onChanged,
+  });
+
+  Future<void> _openSelector(BuildContext context) async {
+    final result = await showModalBottomSheet<List<FormItem>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final tempSelection = selectedForms.map((form) => form.id).toSet();
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                top: 64,
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Material(
+                color: kWhite,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(height: 12),
+                      Container(
+                        width: 42,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: kDivider,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Select Forms',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: kTextDark,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                          itemCount: forms.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final form = forms[index];
+                            final isSelected = tempSelection.contains(form.id);
+
+                            return InkWell(
+                              borderRadius: BorderRadius.circular(14),
+                              onTap: () {
+                                setModalState(() {
+                                  if (isSelected) {
+                                    tempSelection.remove(form.id);
+                                  } else {
+                                    tempSelection.add(form.id);
+                                  }
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? const Color(0xFFEFF4FF)
+                                      : const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? kBlue
+                                        : const Color(0xFFE2E8F0),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Checkbox(
+                                      value: isSelected,
+                                      onChanged: (checked) {
+                                        setModalState(() {
+                                          if (checked == true) {
+                                            tempSelection.add(form.id);
+                                          } else {
+                                            tempSelection.remove(form.id);
+                                          }
+                                        });
+                                      },
+                                      activeColor: kBlue,
+                                      visualDensity: VisualDensity.compact,
+                                      materialTapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        form.name,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: kTextDark,
+                                        ),
+                                      ),
+                                    ),
+                                    // const SizedBox(width: 8),
+                                    // Icon(
+                                    //   isSelected
+                                    //       ? Icons.check_circle
+                                    //       : Icons.radio_button_unchecked,
+                                    //   color: isSelected ? kBlue : kTextLight,
+                                    //   size: 20,
+                                    // ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => Navigator.pop(sheetContext),
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: kDivider),
+                                  foregroundColor: kTextMid,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text('Cancel'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  final selection = forms
+                                      .where(
+                                        (form) =>
+                                            tempSelection.contains(form.id),
+                                      )
+                                      .toList();
+                                  Navigator.pop(sheetContext, selection);
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: kBlue,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  elevation: 0,
+                                ),
+                                child: const Text('Done'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
           },
-
-          child: Text(form.name, overflow: TextOverflow.ellipsis),
         );
-      }).toList(),
-
-      onChanged: (_) {},
-
-      validator: (selected) {
-        if (selected == null || selected.isEmpty) {
-          return 'Form name is required';
-        }
-        return null;
       },
+    );
 
-      decoration: InputDecoration(
-        hintText: 'Select form',
-        filled: true,
-        fillColor: kWhite,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 14,
-        ),
-        border: OutlineInputBorder(
+    if (result != null) {
+      onChanged(result);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => _openSelector(context),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: kWhite,
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: kDivider),
+          border: Border.all(color: kDivider),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: kDivider),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: kBlue, width: 1.5),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                selectedForms.isEmpty
+                    ? 'Select form(s)'
+                    : _selectedFormsLabelFromList(selectedForms),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selectedForms.isEmpty ? kTextLight : kTextDark,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Icon(Icons.arrow_drop_down_rounded, color: kTextMid),
+          ],
         ),
       ),
     );
+  }
+
+  String _selectedFormsLabelFromList(List<FormItem> forms) {
+    if (forms.isEmpty) return 'Select form(s)';
+    if (forms.length == 1) return forms.first.name;
+    return '${forms.length} forms selected';
   }
 }
 
@@ -724,8 +918,8 @@ class _JobCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    _StatusChip(status: job.status),
+                    // const SizedBox(width: 10),
+                    // _StatusChip(status: job.status),
                   ],
                 ),
                 const SizedBox(height: 4),

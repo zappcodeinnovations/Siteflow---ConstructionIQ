@@ -1,14 +1,22 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-
 import '../network/api_client.dart';
 import '../network/api_endpoint.dart';
 
 class FormService {
   /// ✅ GET ALL FORMS
-  static Future<Map<String, dynamic>> getForms() async {
+  static Future<Map<String, dynamic>> getForms({
+    int? jobId,
+    bool selectedOnly = false,
+  }) async {
     try {
-      final response = await ApiClient.get(ApiEndpoints.formsList);
+      final endpoint = selectedOnly && jobId != null
+          ? ApiEndpoints.selectedJobForms(jobId)
+          : (jobId != null || selectedOnly)
+          ? ApiEndpoints.formsQuery(jobId: jobId, selectedOnly: selectedOnly)
+          : ApiEndpoints.formsList;
+
+      final response = await ApiClient.get(endpoint);
 
       _validateResponse(response, key: "results");
 
@@ -17,6 +25,25 @@ class FormService {
       return response;
     } catch (e, stackTrace) {
       debugPrint("❌ FORMS API ERROR: $e");
+      debugPrint("📍 STACKTRACE: $stackTrace");
+      rethrow;
+    }
+  }
+
+  /// ✅ GET SELECTED FORMS FOR A JOB
+  static Future<Map<String, dynamic>> getSelectedJobForms(int jobId) async {
+    try {
+      final response = await ApiClient.get(
+        ApiEndpoints.selectedJobForms(jobId),
+      );
+
+      _validateResponse(response, key: "results");
+
+      debugPrint("📡 SELECTED JOB FORMS RESPONSE: $response");
+
+      return response;
+    } catch (e, stackTrace) {
+      debugPrint("❌ SELECTED JOB FORMS API ERROR: $e");
       debugPrint("📍 STACKTRACE: $stackTrace");
       rethrow;
     }

@@ -10,10 +10,19 @@ class AuthResponse {
   });
 
   factory AuthResponse.fromJson(Map<String, dynamic> json) {
+    final userJson = Map<String, dynamic>.from(json["user"] ?? {});
+    for (final entry in json.entries) {
+      if (entry.key == "tokens" || entry.key == "user") {
+        continue;
+      }
+
+      userJson[entry.key] = entry.value;
+    }
+
     return AuthResponse(
       access: json["tokens"]["access"],
       refresh: json["tokens"]["refresh"],
-      user: User.fromJson(json["user"]),
+      user: User.fromJson(userJson),
     );
   }
 }
@@ -42,6 +51,47 @@ class User {
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
+    final explicitPasswordSet = _firstBool(json, const [
+      "is_password_set",
+      "password_set",
+      "isPasswordSet",
+      "has_set_password",
+      "hasSetPassword",
+      "is_set_password",
+      "set_password",
+      "password_changed",
+    ]);
+
+    final requiresPasswordSetup = _firstBool(json, const [
+      "is_first_login",
+      "first_login",
+      "isFirstLogin",
+      "first_time_login",
+      "is_first_time_login",
+      "isFirstTimeLogin",
+      "is_new_user",
+      "new_user",
+      "isNewUser",
+      "force_password_change",
+      "forcePasswordChange",
+      "must_change_password",
+      "mustChangePassword",
+      "requires_password_change",
+      "requiresPasswordChange",
+      "change_password_required",
+      "changePasswordRequired",
+      "password_change_required",
+      "passwordChangeRequired",
+      "password_reset_required",
+      "passwordResetRequired",
+      "is_default_password",
+      "isDefaultPassword",
+      "temporary_password",
+      "temporaryPassword",
+      "is_temporary_password",
+      "isTemporaryPassword",
+    ]);
+
     return User(
       id: json["id"],
       email: json["email"],
@@ -51,7 +101,34 @@ class User {
       profileImage: json["profile_image"],
       phone: json["phone"],
       isActive: json["is_active"],
-      isPasswordSet: json["is_password_set"] ?? false,
+      isPasswordSet: requiresPasswordSetup == true
+          ? false
+          : explicitPasswordSet ?? !(requiresPasswordSetup ?? true),
     );
+  }
+
+  static bool? _firstBool(Map<String, dynamic> json, List<String> keys) {
+    for (final key in keys) {
+      if (!json.containsKey(key)) continue;
+
+      final parsed = _parseBool(json[key]);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+
+    return null;
+  }
+
+  static bool? _parseBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      if (['true', '1', 'yes', 'y'].contains(normalized)) return true;
+      if (['false', '0', 'no', 'n'].contains(normalized)) return false;
+    }
+
+    return null;
   }
 }

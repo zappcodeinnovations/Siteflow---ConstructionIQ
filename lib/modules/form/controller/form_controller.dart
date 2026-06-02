@@ -5,9 +5,15 @@ import 'package:flutter/material.dart';
 
 class FormsController {
   /// ✅ FETCH FORMS
-  Future<List<FormItem>> fetchForms() async {
+  Future<List<FormItem>> fetchForms({
+    int? jobId,
+    bool selectedOnly = false,
+  }) async {
     try {
-      final response = await FormService.getForms();
+      final response = await FormService.getForms(
+        jobId: jobId,
+        selectedOnly: selectedOnly,
+      );
 
       final List list = response["results"] ?? [];
 
@@ -20,6 +26,35 @@ class FormsController {
       return forms;
     } catch (e, stackTrace) {
       debugPrint("❌ FORMS CONTROLLER ERROR: $e");
+      debugPrint("📍 STACKTRACE: $stackTrace");
+      rethrow;
+    }
+  }
+
+  /// ✅ FETCH SELECTED FORMS FOR A JOB
+  Future<List<FormItem>> fetchSelectedJobForms(int jobId) async {
+    try {
+      debugPrint("📥 FETCH SELECTED JOB FORMS => jobId: $jobId");
+
+      final response = await FormService.getSelectedJobForms(jobId);
+
+      final List list = response["results"] ?? [];
+
+      final List<FormItem> forms = list.map((item) {
+        return FormItem.fromJson(item);
+      }).toList();
+
+      debugPrint("📡 SELECTED JOB FORMS COUNT => ${forms.length}");
+
+      for (final form in forms) {
+        debugPrint(
+          "📄 SELECTED FORM => id: ${form.id}, name: ${form.name}, slug: ${form.slug}",
+        );
+      }
+
+      return forms;
+    } catch (e, stackTrace) {
+      debugPrint("❌ SELECTED JOB FORMS CONTROLLER ERROR: $e");
       debugPrint("📍 STACKTRACE: $stackTrace");
       rethrow;
     }

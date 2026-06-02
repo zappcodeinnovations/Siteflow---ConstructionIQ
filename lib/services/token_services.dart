@@ -8,6 +8,10 @@ class TokenManager {
   static const String _passwordSetPrefix = "isPasswordSet_";
   static const String _firstLoginPrefix = "isFirstLogin_";
 
+  static String _normalizedEmail(String email) {
+    return email.trim().toLowerCase();
+  }
+
   // 🔐 SAVE TOKENS
   static Future<void> saveTokens(String access, String refresh) async {
     final prefs = await SharedPreferences.getInstance();
@@ -56,18 +60,29 @@ class TokenManager {
 
   static Future<void> setPasswordSet(String email, bool value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool("$_passwordSetPrefix$email", value);
-    await prefs.setBool("$_firstLoginPrefix$email", !value);
+    final normalizedEmail = _normalizedEmail(email);
+    await prefs.setBool("$_passwordSetPrefix$normalizedEmail", value);
+    await prefs.setBool("$_firstLoginPrefix$normalizedEmail", !value);
+  }
+
+  static Future<bool> hasPasswordSetValue(String email) async {
+    final prefs = await SharedPreferences.getInstance();
+    final normalizedEmail = _normalizedEmail(email);
+    return prefs.containsKey("$_passwordSetPrefix$normalizedEmail") ||
+        prefs.containsKey("$_firstLoginPrefix$normalizedEmail");
   }
 
   static Future<bool> isPasswordSet(String email) async {
     final prefs = await SharedPreferences.getInstance();
-    final storedValue = prefs.getBool("$_passwordSetPrefix$email");
+    final normalizedEmail = _normalizedEmail(email);
+    final storedValue = prefs.getBool("$_passwordSetPrefix$normalizedEmail");
     if (storedValue != null) {
       return storedValue;
     }
 
-    final legacyFirstLogin = prefs.getBool("$_firstLoginPrefix$email");
+    final legacyFirstLogin = prefs.getBool(
+      "$_firstLoginPrefix$normalizedEmail",
+    );
     if (legacyFirstLogin != null) {
       return !legacyFirstLogin;
     }
@@ -112,6 +127,8 @@ class TokenManager {
   // 🚪 CLEAR ALL (LOGOUT)
   static Future<void> clearAll() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+
     await prefs.remove(accessTokenKey);
     await prefs.remove(refreshTokenKey);
     await prefs.remove(userEmailKey);

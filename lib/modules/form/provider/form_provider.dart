@@ -36,6 +36,16 @@ final formsListProvider = FutureProvider.autoDispose<List<FormItem>>((
   return controller.fetchForms();
 });
 
+/// ✅ GET SELECTED FORMS FOR A JOB
+final selectedJobFormsProvider = FutureProvider.autoDispose
+    .family<List<FormItem>, int>((ref, jobId) async {
+      final controller = ref.read(formsControllerProvider);
+
+      ref.keepAlive();
+
+      return controller.fetchSelectedJobForms(jobId);
+    });
+
 /// ✅ GET FORM STATUS KPI
 final formStatusKpiProvider = FutureProvider.autoDispose<FormStatusKpiModel>((
   ref,

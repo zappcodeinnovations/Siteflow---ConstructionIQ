@@ -1,22 +1,46 @@
 /// 🔄 REFRESH TOKEN
 
-import 'dart:convert';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:euroside/network/api_endpoint.dart';
 import 'package:euroside/services/app_network_error_service.dart';
+import 'package:euroside/services/session_logout_router.dart';
 import 'package:euroside/services/token_services.dart';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 class ApiClient {
+  static const String _networkUnavailableMessage =
+      'Unable to reach the server. Check your internet connection or try again later.';
+  static const String _sessionExpiredMessage =
+      'Your session expired. Please login again.';
+  static const String _serverErrorLogoutMessage =
+      'Server error occurred. Please login again.';
+
+  static Exception _networkException() {
+    return Exception(_networkUnavailableMessage);
+  }
+
   /// ✅ COMMON HEADERS
-  static Future<Map<String, String>> _getHeaders() async {
+  static Future<Map<String, String>> _getHeaders({
+    bool includeAuth = true,
+  }) async {
     String? token = await TokenManager.getAccessToken();
 
     return {
       "Content-Type": "application/json",
-      if (token != null) "Authorization": "Bearer $token",
+      if (includeAuth && token != null) "Authorization": "Bearer $token",
     };
+  }
+
+  static bool _isNetworkIssue(Object error) {
+    return error is SocketException ||
+        error is TimeoutException ||
+        error.toString().contains('SocketException') ||
+        error.toString().contains('Failed host lookup') ||
+        error.toString().contains('Connection timed out') ||
+        error.toString().contains('Network error');
   }
 
   static Future<bool> _refreshAccessToken() async {
@@ -40,15 +64,29 @@ class ApiClient {
     return false;
   }
 
-  static Future<dynamic> get(String endpoint) async {
+  static void _redirectToLogin({required String message}) {
+    unawaited(SessionLogoutRouter.routeToLogin(logoutMessage: message));
+  }
+
+  static Future<dynamic> get(
+    String endpoint, {
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
     try {
+      debugPrint('📤 GET => ${ApiEndpoints.baseUrl + endpoint}');
+
       final response = await http
           .get(
             Uri.parse(ApiEndpoints.baseUrl + endpoint),
             headers: await _getHeaders(),
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(timeout);
+
       return _handleResponse(response);
+    } on TimeoutException catch (e) {
+      debugPrint('❌ GET TIMEOUT => $e');
+      AppNetworkErrorService.report(_networkUnavailableMessage);
+      throw _networkException();
     } on Exception catch (e) {
       // Try refresh if token expired
       if (e.toString().contains('token_not_valid')) {
@@ -60,15 +98,15 @@ class ApiClient {
           );
           return _handleResponse(retryResponse);
         }
+
+        _redirectToLogin(message: _sessionExpiredMessage);
+        throw Exception(_sessionExpiredMessage);
       }
-      if (e is SocketException ||
-          e.toString().contains('SocketException') ||
-          e.toString().contains('Failed host lookup') ||
-          e.toString().contains('Connection timed out') ||
-          e.toString().contains('Network error')) {
-        AppNetworkErrorService.report('Network error. Please try again.');
+      if (_isNetworkIssue(e)) {
+        debugPrint('❌ GET NETWORK ERROR => $e');
+        AppNetworkErrorService.report(_networkUnavailableMessage);
       }
-      rethrow;
+      throw _networkException();
     }
   }
 
@@ -113,14 +151,18 @@ class ApiClient {
       return _handleResponse(response);
     } on TimeoutException catch (e) {
       print("❌ MULTIPART TIMEOUT ERROR: $e");
-      AppNetworkErrorService.report('Network error. Please try again.');
-      throw Exception("Request timed out. Please try again.");
+      AppNetworkErrorService.report(_networkUnavailableMessage);
+      throw Exception(_networkUnavailableMessage);
     } on SocketException catch (e) {
       print("❌ MULTIPART SOCKET ERROR: $e");
-      AppNetworkErrorService.report('Network error. Please try again.');
-      throw Exception("Network error. Please try again.");
+      AppNetworkErrorService.report(_networkUnavailableMessage);
+      throw Exception(_networkUnavailableMessage);
     } catch (e) {
       print("❌ MULTIPART ERROR: $e");
+      // Preserve non-network errors (validation/backend messages)
+      if (e.toString().contains('token_not_valid')) {
+        _redirectToLogin(message: _sessionExpiredMessage);
+      }
       rethrow;
     }
   }
@@ -128,36 +170,47 @@ class ApiClient {
   /// ✅ POST API
   static Future<dynamic> post(
     String endpoint,
-    Map<String, dynamic> body,
-  ) async {
+    Map<String, dynamic> body, {
+    bool includeAuth = true,
+  }) async {
     try {
       final response = await http
           .post(
             Uri.parse(ApiEndpoints.baseUrl + endpoint),
-            headers: await _getHeaders(),
+            headers: await _getHeaders(includeAuth: includeAuth),
             body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 20));
       return _handleResponse(response);
     } on Exception catch (e) {
+      // Handle token refresh request specially
       if (e.toString().contains('token_not_valid')) {
         final refreshed = await _refreshAccessToken();
         if (refreshed) {
           final retryResponse = await http.post(
             Uri.parse(ApiEndpoints.baseUrl + endpoint),
-            headers: await _getHeaders(),
+            headers: await _getHeaders(includeAuth: includeAuth),
             body: jsonEncode(body),
           );
           return _handleResponse(retryResponse);
         }
+
+        _redirectToLogin(message: _sessionExpiredMessage);
+        throw Exception(_sessionExpiredMessage);
       }
+
+      // Network/timeouts -> convert to friendly network error
       if (e is SocketException ||
+          e is TimeoutException ||
           e.toString().contains('SocketException') ||
           e.toString().contains('Failed host lookup') ||
           e.toString().contains('Connection timed out') ||
           e.toString().contains('Network error')) {
-        AppNetworkErrorService.report('Network error. Please try again.');
+        AppNetworkErrorService.report(_networkUnavailableMessage);
+        throw _networkException();
       }
+
+      // Preserve other (backend/validation) errors so callers can inspect details
       rethrow;
     }
   }
@@ -184,14 +237,21 @@ class ApiClient {
           );
           return _handleResponse(retryResponse);
         }
+
+        _redirectToLogin(message: _sessionExpiredMessage);
+        throw Exception(_sessionExpiredMessage);
       }
+
       if (e is SocketException ||
+          e is TimeoutException ||
           e.toString().contains('SocketException') ||
           e.toString().contains('Failed host lookup') ||
           e.toString().contains('Connection timed out') ||
           e.toString().contains('Network error')) {
-        AppNetworkErrorService.report('Network error. Please try again.');
+        AppNetworkErrorService.report(_networkUnavailableMessage);
+        throw _networkException();
       }
+
       rethrow;
     }
   }
@@ -216,14 +276,21 @@ class ApiClient {
           );
           return _handleResponse(retryResponse);
         }
+
+        _redirectToLogin(message: _sessionExpiredMessage);
+        throw Exception(_sessionExpiredMessage);
       }
+
       if (e is SocketException ||
+          e is TimeoutException ||
           e.toString().contains('SocketException') ||
           e.toString().contains('Failed host lookup') ||
           e.toString().contains('Connection timed out') ||
           e.toString().contains('Network error')) {
-        AppNetworkErrorService.report('Network error. Please try again.');
+        AppNetworkErrorService.report(_networkUnavailableMessage);
+        throw _networkException();
       }
+
       rethrow;
     }
   }
@@ -234,15 +301,32 @@ class ApiClient {
     print("📡 RESPONSE BODY: ${response.body}");
 
     final body = response.body.trim();
+    final lowerBody = body.toLowerCase();
+    final contentType = response.headers['content-type']?.toLowerCase() ?? '';
 
-    if (body.startsWith('<!DOCTYPE html') ||
-        body.startsWith('<html') ||
-        body.startsWith('<HTML')) {
+    if (response.statusCode >= 500) {
+      _redirectToLogin(message: _serverErrorLogoutMessage);
+    }
+
+    if (contentType.contains('text/html') ||
+        lowerBody.startsWith('<!doctype html') ||
+        lowerBody.startsWith('<html')) {
       AppNetworkErrorService.report('Unexpected HTML response from server.');
+      if (response.statusCode >= 500) {
+        throw Exception('Server error. Please try later.');
+      }
       throw Exception('Unexpected HTML response from server.');
     }
 
-    final data = body.isNotEmpty ? jsonDecode(body) : {};
+    dynamic data;
+    try {
+      data = body.isNotEmpty ? jsonDecode(body) : {};
+    } on FormatException {
+      if (response.statusCode >= 500) {
+        throw Exception('Server error. Please try later.');
+      }
+      throw Exception('Invalid server response format.');
+    }
 
     /// 🔐 TOKEN EXPIRED
     if (response.statusCode == 401 && data["code"] == "token_not_valid") {
@@ -252,7 +336,14 @@ class ApiClient {
 
     /// 🔐 UNAUTHORIZED (missing/invalid auth header)
     if (response.statusCode == 401) {
-      TokenManager.clearAll();
+      final detail = data['detail']?.toString() ?? '';
+
+      if (detail == 'Authentication credentials were not provided.') {
+        _redirectToLogin(message: _sessionExpiredMessage);
+      } else {
+        unawaited(SessionLogoutRouter.routeToLoginFromAnotherDevice());
+      }
+
       throw Exception(
         data["detail"] ?? "Authentication failed. Please login again.",
       );
@@ -271,6 +362,12 @@ class ApiClient {
       throw Exception('$errorMessage |BACKEND_JSON| ${response.body}');
     }
 
+    /// ❌ CONFLICT (for example: account active on another device)
+    if (response.statusCode == 409) {
+      String errorMessage = _extractErrorMessage(data);
+      throw Exception('$errorMessage |BACKEND_JSON| ${response.body}');
+    }
+
     /// ❌ FORBIDDEN
     if (response.statusCode == 403) {
       throw Exception(data["detail"] ?? "You don't have permission.");
@@ -283,6 +380,7 @@ class ApiClient {
 
     /// ❌ SERVER ERROR
     if (response.statusCode >= 500) {
+      _redirectToLogin(message: _serverErrorLogoutMessage);
       throw Exception("Server error. Please try later.");
     }
 

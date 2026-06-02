@@ -3,63 +3,64 @@ import 'package:euroside/modules/all_projects/provider/all_project_provider.dart
 import 'package:euroside/modules/all_projects/view/project_details_view.dart';
 import 'package:euroside/modules/clock_in/view/clock_in_screen.dart';
 import 'package:euroside/services/current_clock_session_service.dart';
+import 'package:euroside/screens/nav_bar/main_navigation_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 // ─── Design Tokens (shared with forms_screen.dart) ───────────────
 class _C {
-  static const background  = Color(0xFFF4F5F8);
-  static const surface     = Color(0xFFFFFFFF);
-  static const border      = Color(0xFFEAECF0);
+  static const background = Color(0xFFF4F5F8);
+  static const surface = Color(0xFFFFFFFF);
+  static const border = Color(0xFFEAECF0);
   static const borderInner = Color(0xFFF3F4F6);
-  static const accent      = Color(0xFF2563EB);
+  static const accent = Color(0xFF2563EB);
   static const accentLight = Color(0xFFEFF6FF);
-  static const textPrimary   = Color(0xFF111827);
+  static const textPrimary = Color(0xFF111827);
   static const textSecondary = Color(0xFF6B7280);
-  static const textHint      = Color(0xFFC0C4CF);
+  static const textHint = Color(0xFFC0C4CF);
 
   // Status
-  static const statusActive    = Color(0xFF16A34A);
-  static const statusActiveBg  = Color(0xFFF0FDF4);
+  static const statusActive = Color(0xFF16A34A);
+  static const statusActiveBg = Color(0xFFF0FDF4);
   static const statusActiveBdr = Color(0xFFBBF7D0);
 
-  static const statusCompleted    = Color(0xFF2563EB);
-  static const statusCompletedBg  = Color(0xFFEFF6FF);
+  static const statusCompleted = Color(0xFF2563EB);
+  static const statusCompletedBg = Color(0xFFEFF6FF);
   static const statusCompletedBdr = Color(0xFFBFDBFE);
 
-  static const statusPending    = Color(0xFFEA580C);
-  static const statusPendingBg  = Color(0xFFFFF7ED);
+  static const statusPending = Color(0xFFEA580C);
+  static const statusPendingBg = Color(0xFFFFF7ED);
   static const statusPendingBdr = Color(0xFFFED7AA);
 
-  static const statusCritical    = Color(0xFFDC2626);
-  static const statusCriticalBg  = Color(0xFFFEF2F2);
+  static const statusCritical = Color(0xFFDC2626);
+  static const statusCriticalBg = Color(0xFFFEF2F2);
   static const statusCriticalBdr = Color(0xFFFECACA);
 
-  static const statusDefault    = Color(0xFF6B7280);
-  static const statusDefaultBg  = Color(0xFFF3F4F6);
+  static const statusDefault = Color(0xFF6B7280);
+  static const statusDefaultBg = Color(0xFFF3F4F6);
   static const statusDefaultBdr = Color(0xFFE5E7EB);
 
   // Priority
-  static const priorityCritical    = Color(0xFFDC2626);
-  static const priorityCriticalBg  = Color(0xFFFEF2F2);
+  static const priorityCritical = Color(0xFFDC2626);
+  static const priorityCriticalBg = Color(0xFFFEF2F2);
   static const priorityCriticalBdr = Color(0xFFFECACA);
 
-  static const priorityHigh    = Color(0xFFF97316);
-  static const priorityHighBg  = Color(0xFFFFF7ED);
+  static const priorityHigh = Color(0xFFF97316);
+  static const priorityHighBg = Color(0xFFFFF7ED);
   static const priorityHighBdr = Color(0xFFFED7AA);
 
-  static const priorityMedium    = Color(0xFFD97706);
-  static const priorityMediumBg  = Color(0xFFFFFBEB);
+  static const priorityMedium = Color(0xFFD97706);
+  static const priorityMediumBg = Color(0xFFFFFBEB);
   static const priorityMediumBdr = Color(0xFFFDE68A);
 
-  static const priorityLow    = Color(0xFF16A34A);
-  static const priorityLowBg  = Color(0xFFF0FDF4);
+  static const priorityLow = Color(0xFF16A34A);
+  static const priorityLowBg = Color(0xFFF0FDF4);
   static const priorityLowBdr = Color(0xFFBBF7D0);
 
   // Snackbar error
-  static const errorBg  = Color(0xFFFEF2F2);
+  static const errorBg = Color(0xFFFEF2F2);
   static const errorBdr = Color(0xFFFECACA);
-  static const errorFg  = Color(0xFF991B1B);
+  static const errorFg = Color(0xFF991B1B);
   static const errorSub = Color(0xFF7F1D1D);
   static const errorIcon = Color(0xFFDC2626);
 }
@@ -67,26 +68,80 @@ class _C {
 // ─── Chip config ────────────────────────────────────────────────
 class _ChipConfig {
   final Color text, bg, border;
-  const _ChipConfig({required this.text, required this.bg, required this.border});
+  const _ChipConfig({
+    required this.text,
+    required this.bg,
+    required this.border,
+  });
 }
 
 _ChipConfig _statusChip(String status) {
   switch (status.toLowerCase()) {
-    case 'active':    return const _ChipConfig(text: _C.statusActive,   bg: _C.statusActiveBg,   border: _C.statusActiveBdr);
-    case 'completed': return const _ChipConfig(text: _C.statusCompleted, bg: _C.statusCompletedBg, border: _C.statusCompletedBdr);
-    case 'pending':   return const _ChipConfig(text: _C.statusPending,  bg: _C.statusPendingBg,  border: _C.statusPendingBdr);
-    case 'critical':  return const _ChipConfig(text: _C.statusCritical, bg: _C.statusCriticalBg, border: _C.statusCriticalBdr);
-    default:          return const _ChipConfig(text: _C.statusDefault,  bg: _C.statusDefaultBg,  border: _C.statusDefaultBdr);
+    case 'active':
+      return const _ChipConfig(
+        text: _C.statusActive,
+        bg: _C.statusActiveBg,
+        border: _C.statusActiveBdr,
+      );
+    case 'completed':
+      return const _ChipConfig(
+        text: _C.statusCompleted,
+        bg: _C.statusCompletedBg,
+        border: _C.statusCompletedBdr,
+      );
+    case 'pending':
+      return const _ChipConfig(
+        text: _C.statusPending,
+        bg: _C.statusPendingBg,
+        border: _C.statusPendingBdr,
+      );
+    case 'critical':
+      return const _ChipConfig(
+        text: _C.statusCritical,
+        bg: _C.statusCriticalBg,
+        border: _C.statusCriticalBdr,
+      );
+    default:
+      return const _ChipConfig(
+        text: _C.statusDefault,
+        bg: _C.statusDefaultBg,
+        border: _C.statusDefaultBdr,
+      );
   }
 }
 
 _ChipConfig _priorityChip(String priority) {
   switch (priority.toLowerCase()) {
-    case 'critical': return const _ChipConfig(text: _C.priorityCritical, bg: _C.priorityCriticalBg, border: _C.priorityCriticalBdr);
-    case 'high':     return const _ChipConfig(text: _C.priorityHigh,     bg: _C.priorityHighBg,     border: _C.priorityHighBdr);
-    case 'medium':   return const _ChipConfig(text: _C.priorityMedium,   bg: _C.priorityMediumBg,   border: _C.priorityMediumBdr);
-    case 'low':      return const _ChipConfig(text: _C.priorityLow,      bg: _C.priorityLowBg,      border: _C.priorityLowBdr);
-    default:         return const _ChipConfig(text: _C.statusDefault,    bg: _C.statusDefaultBg,    border: _C.statusDefaultBdr);
+    case 'critical':
+      return const _ChipConfig(
+        text: _C.priorityCritical,
+        bg: _C.priorityCriticalBg,
+        border: _C.priorityCriticalBdr,
+      );
+    case 'high':
+      return const _ChipConfig(
+        text: _C.priorityHigh,
+        bg: _C.priorityHighBg,
+        border: _C.priorityHighBdr,
+      );
+    case 'medium':
+      return const _ChipConfig(
+        text: _C.priorityMedium,
+        bg: _C.priorityMediumBg,
+        border: _C.priorityMediumBdr,
+      );
+    case 'low':
+      return const _ChipConfig(
+        text: _C.priorityLow,
+        bg: _C.priorityLowBg,
+        border: _C.priorityLowBdr,
+      );
+    default:
+      return const _ChipConfig(
+        text: _C.statusDefault,
+        bg: _C.statusDefaultBg,
+        border: _C.statusDefaultBdr,
+      );
   }
 }
 
@@ -101,8 +156,17 @@ class AllProjectListPage extends ConsumerStatefulWidget {
 class _AllProjectListPageState extends ConsumerState<AllProjectListPage> {
   String _search = '';
 
+  void _goToNavigationShell() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const NavigationScreen()),
+      (route) => false,
+    );
+  }
+
   Future<void> _refreshProjects() async {
-    await ref.read(AllprojectControllerProvider.notifier).fetchProjects(force: true);
+    await ref
+        .read(AllprojectControllerProvider.notifier)
+        .fetchProjects(force: true);
   }
 
   Future<void> _handleProjectTap(AllprojectModel project) async {
@@ -222,121 +286,133 @@ class _AllProjectListPageState extends ConsumerState<AllProjectListPage> {
     final filtered = _search.trim().isEmpty
         ? state.projects
         : state.projects
-            .where((p) => p.name.toLowerCase().contains(_search.toLowerCase()))
-            .toList();
+              .where(
+                (p) => p.name.toLowerCase().contains(_search.toLowerCase()),
+              )
+              .toList();
 
-    return Scaffold(
-      backgroundColor: _C.background,
-      appBar: AppBar(
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        backgroundColor: _C.surface,
-        centerTitle: false,
-        title: const Text(
-          "Projects",
-          style: TextStyle(
+    return WillPopScope(
+      onWillPop: () async {
+        _goToNavigationShell();
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: _C.background,
+        appBar: AppBar(
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          backgroundColor: _C.surface,
+          centerTitle: false,
+          leading: IconButton(
+            onPressed: _goToNavigationShell,
+            icon: const Icon(Icons.arrow_back_rounded),
             color: _C.textPrimary,
-            fontWeight: FontWeight.w600,
-            fontSize: 15,
-            letterSpacing: -0.2,
+          ),
+          title: const Text(
+            "Projects",
+            style: TextStyle(
+              color: _C.textPrimary,
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
+              letterSpacing: -0.2,
+            ),
+          ),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(1),
+            child: Container(height: 1, color: _C.border),
           ),
         ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: _C.border),
-        ),
-      ),
-      body: state.isLoading && state.projects.isEmpty
-          ? const Center(
-              child: CircularProgressIndicator(
+        body: state.isLoading && state.projects.isEmpty
+            ? const Center(
+                child: CircularProgressIndicator(
+                  color: _C.accent,
+                  strokeWidth: 2,
+                ),
+              )
+            : RefreshIndicator(
                 color: _C.accent,
-                strokeWidth: 2,
-              ),
-            )
-          : RefreshIndicator(
-              color: _C.accent,
-              onRefresh: _refreshProjects,
-              child: CustomScrollView(
-                slivers: [
-                  // ── Summary + Search header ──
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Stats row
-                          // if (state.projects.isNotEmpty)
-                          //   _StatsRow(projects: state.projects),
+                onRefresh: _refreshProjects,
+                child: CustomScrollView(
+                  slivers: [
+                    // ── Summary + Search header ──
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Stats row
+                            // if (state.projects.isNotEmpty)
+                            //   _StatsRow(projects: state.projects),
+                            const SizedBox(height: 12),
 
-                          const SizedBox(height: 12),
-
-                          // Search bar
-                          Container(
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: _C.surface,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: _C.border),
-                            ),
-                            child: TextField(
-                              onChanged: (v) => setState(() => _search = v),
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: _C.textPrimary,
+                            // Search bar
+                            Container(
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: _C.surface,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: _C.border),
                               ),
-                              cursorColor: _C.accent,
-                              decoration: const InputDecoration(
-                                hintText: "Search projects…",
-                                hintStyle: TextStyle(
+                              child: TextField(
+                                onChanged: (v) => setState(() => _search = v),
+                                style: const TextStyle(
                                   fontSize: 13,
-                                  color: _C.textHint,
+                                  color: _C.textPrimary,
                                 ),
-                                prefixIcon: Icon(
-                                  Icons.search_rounded,
-                                  size: 18,
-                                  color: _C.textHint,
+                                cursorColor: _C.accent,
+                                decoration: const InputDecoration(
+                                  hintText: "Search projects…",
+                                  hintStyle: TextStyle(
+                                    fontSize: 13,
+                                    color: _C.textHint,
+                                  ),
+                                  prefixIcon: Icon(
+                                    Icons.search_rounded,
+                                    size: 18,
+                                    color: _C.textHint,
+                                  ),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(
+                                    vertical: 10,
+                                  ),
                                 ),
-                                border: InputBorder.none,
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(vertical: 10),
                               ),
                             ),
-                          ),
 
-                          const SizedBox(height: 14),
-                        ],
+                            const SizedBox(height: 14),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
 
-                  // ── Project list ──
-                  state.projects.isEmpty
-                      ? SliverFillRemaining(child: _emptyState())
-                      : filtered.isEmpty
-                          ? SliverFillRemaining(
-                              child: _noResultsState(_search),
-                            )
-                          : SliverPadding(
-                              padding: const EdgeInsets.fromLTRB(14, 0, 14, 24),
-                              sliver: SliverList(
-                                delegate: SliverChildBuilderDelegate(
-                                  (context, index) {
-                                    final project = filtered[index];
-                                    final isLast = index == filtered.length - 1;
-                                    return _ProjectCard(
-                                      project: project,
-                                      isLast: isLast,
-                                      onTap: () => _handleProjectTap(project),
-                                    );
-                                  },
-                                  childCount: filtered.length,
-                                ),
-                              ),
+                    // ── Project list ──
+                    state.projects.isEmpty
+                        ? SliverFillRemaining(child: _emptyState())
+                        : filtered.isEmpty
+                        ? SliverFillRemaining(child: _noResultsState(_search))
+                        : SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(14, 0, 14, 24),
+                            sliver: SliverList(
+                              delegate: SliverChildBuilderDelegate((
+                                context,
+                                index,
+                              ) {
+                                final project = filtered[index];
+                                final isLast = index == filtered.length - 1;
+                                return _ProjectCard(
+                                  project: project,
+                                  isLast: isLast,
+                                  onTap: () => _handleProjectTap(project),
+                                );
+                              }, childCount: filtered.length),
                             ),
-                ],
+                          ),
+                  ],
+                ),
               ),
-            ),
+      ),
     );
   }
 
@@ -420,10 +496,7 @@ class _AllProjectListPageState extends ConsumerState<AllProjectListPage> {
             Text(
               "No projects match \"$query\"",
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: _C.textSecondary,
-                fontSize: 13,
-              ),
+              style: const TextStyle(color: _C.textSecondary, fontSize: 13),
             ),
           ],
         ),
@@ -439,9 +512,15 @@ class _StatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final active    = projects.where((p) => p.status.toLowerCase() == 'active').length;
-    final pending   = projects.where((p) => p.status.toLowerCase() == 'pending').length;
-    final completed = projects.where((p) => p.status.toLowerCase() == 'completed').length;
+    final active = projects
+        .where((p) => p.status.toLowerCase() == 'active')
+        .length;
+    final pending = projects
+        .where((p) => p.status.toLowerCase() == 'pending')
+        .length;
+    final completed = projects
+        .where((p) => p.status.toLowerCase() == 'completed')
+        .length;
 
     return Container(
       decoration: BoxDecoration(
@@ -451,13 +530,22 @@ class _StatsRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _StatCell(label: "Total",     value: "${projects.length}", isFirst: true),
+          _StatCell(label: "Total", value: "${projects.length}", isFirst: true),
           _Divider(),
-          _StatCell(label: "Active",    value: "$active",    accent: _C.statusActive),
+          _StatCell(label: "Active", value: "$active", accent: _C.statusActive),
           _Divider(),
-          _StatCell(label: "Pending",   value: "$pending",   accent: _C.statusPending),
+          _StatCell(
+            label: "Pending",
+            value: "$pending",
+            accent: _C.statusPending,
+          ),
           _Divider(),
-          _StatCell(label: "Done",      value: "$completed", accent: _C.statusCompleted, isLast: true),
+          _StatCell(
+            label: "Done",
+            value: "$completed",
+            accent: _C.statusCompleted,
+            isLast: true,
+          ),
         ],
       ),
     );
@@ -531,7 +619,7 @@ class _ProjectCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusCfg   = _statusChip(project.status);
+    final statusCfg = _statusChip(project.status);
     final priorityCfg = _priorityChip(project.priority);
 
     return Padding(
@@ -585,10 +673,7 @@ class _ProjectCard extends StatelessWidget {
                       const SizedBox(height: 7),
                       Row(
                         children: [
-                          _Chip(
-                            label: project.status,
-                            cfg: statusCfg,
-                          ),
+                          _Chip(label: project.status, cfg: statusCfg),
                           const SizedBox(width: 6),
                           _Chip(
                             label: project.priority,
@@ -631,39 +716,66 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = label.trim().isEmpty ? "Unknown" : label;
+    final text = _formatLabel(label);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      constraints: const BoxConstraints(minHeight: 30),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: cfg.bg,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(999),
         border: Border.all(color: cfg.border),
+        boxShadow: [
+          BoxShadow(
+            color: cfg.text.withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: cfg.text, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
           if (isPriority) ...[
             Container(
-              width: 5,
-              height: 5,
+              width: 1,
+              height: 12,
               decoration: BoxDecoration(
-                color: cfg.text,
-                shape: BoxShape.circle,
+                color: cfg.text.withOpacity(0.35),
+                borderRadius: BorderRadius.circular(99),
               ),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
           ],
           Text(
             text,
             style: TextStyle(
               color: cfg.text,
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
-              letterSpacing: 0.1,
+              letterSpacing: 0,
             ),
           ),
         ],
       ),
     );
+  }
+
+  String _formatLabel(String value) {
+    final text = value.trim();
+    if (text.isEmpty) {
+      return 'Unknown';
+    }
+
+    if (text.length == 1) {
+      return text.toUpperCase();
+    }
+
+    return text[0].toUpperCase() + text.substring(1).toLowerCase();
   }
 }

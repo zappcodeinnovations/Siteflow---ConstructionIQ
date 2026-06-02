@@ -3,6 +3,7 @@ import 'package:euroside/services/announcement_services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:iconsax/iconsax.dart';
+import 'package:intl/intl.dart';
 
 class AnnouncementPage extends StatelessWidget {
   final int projectId;
@@ -24,6 +25,16 @@ class AnnouncementPage extends StatelessWidget {
   static const Color _text = Color(0xff0F172A);
 
   static const Color _subText = Color(0xff64748B);
+
+  String _formatDateTime(String value) {
+    try {
+      final parsedDateTime = DateTime.parse(value).toLocal();
+
+      return DateFormat('dd MMM yyyy, hh:mm a').format(parsedDateTime);
+    } catch (_) {
+      return value;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -258,7 +269,7 @@ class AnnouncementPage extends StatelessWidget {
                           const SizedBox(height: 8),
 
                           Text(
-                            item.createdAt,
+                            _formatDateTime(item.createdAt),
 
                             style: const TextStyle(
                               color: _subText,

@@ -1,21 +1,24 @@
 class FormItem {
   final int id;
   final String name;
+  final String slug;
   final String? description;
   final List<FormFieldItem> fields;
 
   FormItem({
     required this.id,
     required this.name,
+    this.slug = '',
     this.description,
     this.fields = const [],
   });
 
   factory FormItem.fromJson(Map<String, dynamic> json) {
     return FormItem(
-      id: json['id'] ?? 0,
-      name: json['name'] ?? "",
-      description: json['description'],
+      id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
+      name: json['name']?.toString() ?? "",
+      slug: json['slug']?.toString() ?? '',
+      description: json['description']?.toString(),
       fields:
           (json['fields'] as List?)
               ?.map((e) => FormFieldItem.fromJson(e))
@@ -50,14 +53,14 @@ class FormFieldItem {
 
   factory FormFieldItem.fromJson(Map<String, dynamic> json) {
     return FormFieldItem(
-      id: json['id'] ?? 0,
-      sectionId: json['section_id'] ?? 0,
-      sectionTitle: json['section_title'] ?? '',
-      fieldType: json['field_type'] ?? '',
-      title: json['title'] ?? '',
-      isRequired: json['is_required'] ?? false,
-      sortOrder: json['sort_order'] ?? 0,
-      settings: json['settings'] ?? {},
+      id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
+      sectionId: int.tryParse(json['section_id']?.toString() ?? '') ?? 0,
+      sectionTitle: json['section_title']?.toString() ?? '',
+      fieldType: json['field_type']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      isRequired: json['is_required'] == true,
+      sortOrder: int.tryParse(json['sort_order']?.toString() ?? '') ?? 0,
+      settings: (json['settings'] as Map?)?.cast<String, dynamic>() ?? {},
       options:
           (json['options'] as List?)
               ?.map((e) => FormFieldOption.fromJson(e))
@@ -82,10 +85,10 @@ class FormFieldOption {
 
   factory FormFieldOption.fromJson(Map<String, dynamic> json) {
     return FormFieldOption(
-      id: json['id'] ?? 0,
-      label: json['label'] ?? '',
-      value: json['value'] ?? '',
-      sortOrder: json['sort_order'] ?? 0,
+      id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
+      label: json['label']?.toString() ?? '',
+      value: json['value']?.toString() ?? '',
+      sortOrder: int.tryParse(json['sort_order']?.toString() ?? '') ?? 0,
     );
   }
 }

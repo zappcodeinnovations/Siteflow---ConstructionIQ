@@ -30,28 +30,22 @@ class JobController {
   /// ✅ CREATE JOB
   Future<JobModel> createJob({
     required int projectId,
-
-    /// ✅ ADD THIS
-    required int formId,
+    required List<int> formIds,
 
     required String reference,
-    required String formName,
     required String siteContact,
     required String instructions,
   }) async {
     try {
       debugPrint("📤 PROJECT ID => $projectId");
-      debugPrint("📤 FORM ID => $formId");
-      debugPrint("📤 FORM NAME => $formName");
+      debugPrint("📤 FORM IDS => $formIds");
 
       final response = await JobService.createJob(
         projectId: projectId,
 
-        /// ✅ PASS HERE
-        formId: formId,
+        formIds: formIds,
 
         reference: reference,
-        formName: formName,
         siteContact: siteContact,
         instructions: instructions,
       );

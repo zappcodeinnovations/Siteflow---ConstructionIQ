@@ -104,6 +104,29 @@ class _ClockInScreenState extends ConsumerState<ClockInScreen> {
     }
   }
 
+  void _logAdminAssignedProjectLocation() {
+    final projects = ref.read(AllprojectControllerProvider).projects;
+    final project = projects
+        .where((item) => item.id == widget.projectId)
+        .cast<AllprojectModel?>()
+        .firstOrNull;
+
+    if (project == null) {
+      debugPrint(
+        '[ClockIn][DEBUG] Admin project location not found in cache for projectId=${widget.projectId}',
+      );
+      return;
+    }
+
+    final hasLatLng =
+        project.latitude.trim().isNotEmpty &&
+        project.longitude.trim().isNotEmpty;
+
+    debugPrint(
+      '[ClockIn][DEBUG] Admin assigned project location => projectId=${project.id}, name=${project.name}, lat=${project.latitude}, lng=${project.longitude}, hasCoordinates=$hasLatLng',
+    );
+  }
+
   Future<void> handleClockIn() async {
     setState(() {
       isLoading = true;
@@ -112,6 +135,8 @@ class _ClockInScreenState extends ConsumerState<ClockInScreen> {
     });
 
     try {
+      _logAdminAssignedProjectLocation();
+
       final controller = ref.read(clockControllerProvider);
       final result = await controller.clockIn(widget.projectId);
       if (result == null) {

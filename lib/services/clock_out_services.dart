@@ -12,15 +12,12 @@ class ClockOutService {
     try {
       final body = {
         "project_id": projectId,
-        "latitude": latitude,
-        "longitude": longitude,
+        "latitude": _formatCoordinate(latitude),
+        "longitude": _formatCoordinate(longitude),
         if (notes != null) "notes": notes,
       };
 
-      final response = await ApiClient.post(
-        ApiEndpoints.clockOut,
-        body,
-      );
+      final response = await ApiClient.post(ApiEndpoints.clockOut, body);
 
       debugPrint("📡 CLOCK OUT RESPONSE: $response");
 
@@ -30,5 +27,9 @@ class ClockOutService {
       debugPrint("📍 STACKTRACE: $stackTrace");
       rethrow;
     }
+  }
+
+  static String _formatCoordinate(double value) {
+    return value.toStringAsFixed(6);
   }
 }
