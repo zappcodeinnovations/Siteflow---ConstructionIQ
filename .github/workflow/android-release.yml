@@ -1,4 +1,4 @@
-name: Android Release Build
+name: Flutter Android Release
 
 on:
   push:
@@ -6,8 +6,7 @@ on:
       - main
 
 jobs:
-  build-android:
-    name: Build Android APK & AAB
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -17,34 +16,37 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: zulu
           java-version: '17'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.35.2
+          flutter-version: 3.44.1
 
-      - name: Get Dependencies
+      - name: Verify Flutter Version
+        run: flutter --version
+
+      - name: Install Dependencies
         run: flutter pub get
 
-      - name: Analyze Project
-        run: flutter analyze
-
-      - name: Build APK
+      - name: Build Release APK
         run: flutter build apk --release
 
-      - name: Build AppBundle
-        run: flutter build appbundle --release
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Upload APK to Firebase Distribution
+        run: |
+          firebase appdistribution:distribute \
+          build/app/outputs/flutter-apk/app-release.apk \
+          --app ${{ secrets.FIREBASE_ANDROID_APP_ID }} \
+          --Zappkode Testers \
+          --release-notes "New Android Testing Build" \
+          --token ${{ secrets.FIREBASE_TOKEN }}
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk
+          name: release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
-
-      - name: Upload AAB Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-aab
-          path: build/app/outputs/bundle/release/app-release.aab
