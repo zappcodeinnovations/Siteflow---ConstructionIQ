@@ -1,6 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../services/current_clock_session_service.dart';
+import '../../services/profile_services.dart';
 import '../../services/token_services.dart';
 
 enum AppStartStatus {
@@ -15,48 +18,102 @@ class AppStartController extends StateNotifier<AppStartStatus> {
 
   Future<void> initializeApp() async {
     try {
-      // Optional splash delay
+      debugPrint("════════ APP INITIALIZATION START ════════");
+
+      /// Optional splash delay
       await Future.delayed(const Duration(seconds: 2));
 
       final prefs = await SharedPreferences.getInstance();
 
-      /// ✅ MAIN FIX: check login flag first
+      /// ✅ CHECK LOGIN STATUS
       final isLoggedIn = prefs.getBool("isLoggedIn") ?? false;
 
+      debugPrint("🔐 IS LOGGED IN => $isLoggedIn");
+
       if (!isLoggedIn) {
+        debugPrint("❌ USER NOT LOGGED IN");
+
         state = AppStartStatus.unauthenticated;
         return;
       }
 
-      /// 🔐 Token check (extra safety)
+      /// ✅ TOKEN CHECK
       final token = await TokenManager.getAccessToken();
 
+      debugPrint("🎟 ACCESS TOKEN => $token");
+
       if (token == null || token.isEmpty) {
-        /// If token missing → force logout
+        debugPrint("❌ TOKEN NOT FOUND");
+
         await prefs.setBool("isLoggedIn", false);
+
         state = AppStartStatus.unauthenticated;
         return;
       }
 
-      /// 📧 Email check
+      /// ✅ EMAIL CHECK
       final email = prefs.getString("user_email");
 
+      debugPrint("📧 USER EMAIL => $email");
+
       if (email == null || email.isEmpty) {
+        debugPrint("❌ EMAIL NOT FOUND");
+
         await prefs.setBool("isLoggedIn", false);
+
         state = AppStartStatus.unauthenticated;
         return;
       }
 
-      /// 🆕 First time login check
-      final isPasswordSet = await TokenManager.isPasswordSet(email);
+      /// 🔥 FETCH PROFILE FROM BACKEND
+      debugPrint("📡 FETCHING PROFILE");
 
+      final profileResponse = await ProfileService.getProfile();
+
+      debugPrint("📦 PROFILE RESPONSE => $profileResponse");
+
+      final user = profileResponse["user"];
+
+      if (user == null) {
+        debugPrint("❌ USER DATA NOT FOUND");
+
+        state = AppStartStatus.unauthenticated;
+        return;
+      }
+
+      /// 🔐 CHECK PASSWORD STATUS
+      final bool isPasswordSet =
+          user["is_password_set"] == true;
+
+      debugPrint("🔐 IS PASSWORD SET => $isPasswordSet");
+
+      /// 👤 EXTRA USER DEBUGS
+      debugPrint("👤 USERNAME => ${user["username"]}");
+      debugPrint("📛 DISPLAY NAME => ${user["display_name"]}");
+      debugPrint("📧 EMAIL => ${user["email"]}");
+      debugPrint("🪪 ROLE => ${user["effective_role"]}");
+
+      /// 🆕 FIRST TIME USER
       if (!isPasswordSet) {
+        debugPrint("🆕 REDIRECT TO SET PASSWORD");
+
         state = AppStartStatus.firstTimeUser;
       } else {
+        debugPrint("✅ PASSWORD ALREADY SET");
+
+        /// 🔄 SYNC CURRENT CLOCK SESSION
         await CurrentClockSessionService.syncCurrentSession();
+
+        debugPrint("🏠 REDIRECT TO HOME");
+
         state = AppStartStatus.authenticated;
       }
-    } catch (e) {
+
+      debugPrint("════════ APP INITIALIZATION END ════════");
+    } catch (e, stackTrace) {
+      debugPrint("❌ APP INITIALIZATION ERROR => $e");
+      debugPrint("📍 STACKTRACE => $stackTrace");
+
       state = AppStartStatus.unauthenticated;
     }
   }

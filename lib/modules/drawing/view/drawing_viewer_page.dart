@@ -2,7 +2,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
-
 import '../model/drawing_location_model.dart';
 import '../model/drawing_model.dart';
 import '../utils/drawing_constants.dart';

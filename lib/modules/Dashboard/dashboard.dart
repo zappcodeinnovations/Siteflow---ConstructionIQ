@@ -21,6 +21,7 @@ import 'package:euroside/services/current_clock_session_service.dart';
 import 'package:euroside/services/fcm_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -39,10 +40,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   static const String _clockedInKey = "isClockedIn";
   static const String _clockedInProjectIdKey = "clockedInProjectId";
   static const String _clockInStartMillisKey = "clockInStartMillis";
+  static const String _clockInTimeKey = "clockInTime";
   static const String _lastLocationTextKey = "lastKnownLocationText";
 
   String _currentLocation = "Fetching location...";
   String _clockedInProjectName = "";
+  String _clockInTimeStr = "";
 
   Duration _shiftDuration = Duration.zero;
   Timer? _timer;
@@ -56,6 +59,63 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   static const Color _accent = Color(0xFF2563EB);
   static const Color _accentLight = Color(0xFFEFF4FF);
   bool _locationPermissionDenied = false;
+
+  String _formatClockInTime(String timeStr) {
+    if (timeStr.isEmpty) return "--:--";
+    try {
+      final dt = DateTime.parse(timeStr);
+      return DateFormat('hh:mm a').format(dt);
+    } catch (_) {
+      return timeStr;
+    }
+  }
+
+  String _formatClockInDate(String timeStr) {
+    if (timeStr.isEmpty) return "";
+    try {
+      final dt = DateTime.parse(timeStr);
+      return DateFormat('dd MMM yyyy').format(dt);
+    } catch (_) {
+      return "";
+    }
+  }
+
+  Widget _timeUnit(String value, String label, bool isClockedIn) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 42,
+            fontWeight: FontWeight.w700,
+            color: isClockedIn ? Colors.white : _ink,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: isClockedIn ? Colors.white.withOpacity(0.7) : _ink2,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _timeColon(bool isClockedIn) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6).copyWith(bottom: 12),
+      child: Text(
+        ":",
+        style: TextStyle(
+          fontSize: 32,
+          fontWeight: FontWeight.w700,
+          color: isClockedIn ? Colors.white.withOpacity(0.7) : _ink2,
+        ),
+      ),
+    );
+  }
 
   Future<void> _refreshKpis() async {
     ref.invalidate(formStatusKpiProvider);
@@ -671,6 +731,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final prefs = await SharedPreferences.getInstance();
     final isClockedIn = prefs.getBool(_clockedInKey) ?? false;
     final startMillis = prefs.getInt(_clockInStartMillisKey);
+    final clockInTimePref = prefs.getString(_clockInTimeKey) ?? "";
 
     if (!isClockedIn || startMillis == null) {
       return false;
@@ -684,6 +745,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     setState(() {
       _isClockedIn = true;
       _shiftDuration = Duration(milliseconds: safeElapsedMillis);
+      _clockInTimeStr = clockInTimePref;
 
       if (_clockedInProjectName.isEmpty ||
           _clockedInProjectName == "No active project") {
@@ -710,6 +772,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           _shiftDuration = Duration(seconds: data.elapsedSeconds);
 
           _clockedInProjectName = data.projectName;
+          _clockInTimeStr = data.clockInTime;
 
           // _currentLocation = "Fetching location...";
         });
@@ -726,6 +789,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             _shiftDuration = Duration.zero;
 
             _clockedInProjectName = "No active project";
+            _clockInTimeStr = "";
 
             _currentLocation = "Location unavailable";
           });
@@ -740,6 +804,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         setState(() {
           _isClockedIn = false;
           _shiftDuration = Duration.zero;
+          _clockInTimeStr = "";
         });
       }
     }
@@ -900,12 +965,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
                           Container(
                             width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 18,
-                            ),
                             decoration: BoxDecoration(
-                              color: _isClockedIn ? _accent : _surface,
+                              gradient: _isClockedIn
+                                  ? const LinearGradient(
+                                      colors: [
+                                        Color(0xFF4B8DF8),
+                                        Color(0xFF1E5EE6)
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    )
+                                  : null,
+                              color: !_isClockedIn ? _surface : null,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
                                 color: _isClockedIn
@@ -915,126 +986,276 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               boxShadow: [
                                 BoxShadow(
                                   color: _isClockedIn
-                                      ? _accent.withOpacity(0.18)
+                                      ? _accent.withOpacity(0.3)
                                       : Colors.black.withOpacity(0.04),
                                   blurRadius: 16,
                                   offset: const Offset(0, 4),
                                 ),
                               ],
                             ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: _isClockedIn
-                                        ? Colors.white.withOpacity(0.15)
-                                        : _bg,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Icon(
-                                    _isClockedIn
-                                        ? Iconsax.clock
-                                        : Iconsax.timer,
-                                    color: _isClockedIn ? Colors.white : _ink2,
-                                    size: 20,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                            child: Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        _isClockedIn
-                                            ? "Shift Duration"
-                                            : "Not Clocked In",
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: _isClockedIn
-                                              ? Colors.white.withOpacity(0.75)
-                                              : _ink2,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-
-                                      const SizedBox(height: 4),
-
-                                      Text(
-                                        _isClockedIn
-                                            ? (_locationPermissionDenied
-                                                  ? "Location permission required"
-                                                  : _formattedTime)
-                                            : "--:--:--",
-                                        style: TextStyle(
-                                          fontSize: 25,
-                                          fontWeight: FontWeight.w700,
-                                          color:
-                                              (_isClockedIn &&
-                                                  !_locationPermissionDenied)
-                                              ? Colors.white
-                                              : const Color.fromARGB(255, 237, 237, 238),
-                                          letterSpacing: 1.1,
-                                        ),
-                                      ),
-
-                                      if (_isClockedIn &&
-                                          !_locationPermissionDenied) ...[
-                                        const SizedBox(height: 14),
-
+                                      if (_isClockedIn)
                                         Container(
-                                          width: double.infinity,
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 10,
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(20),
                                           ),
-
                                           child: Row(
                                             children: [
-                                              Icon(
-                                                _locationPermissionDenied
-                                                    ? Iconsax.warning_2
-                                                    : Iconsax.location,
-                                                size: 15,
-                                                color: Colors.white,
+                                              Container(
+                                                width: 8,
+                                                height: 8,
+                                                decoration: const BoxDecoration(
+                                                  color: Colors.green,
+                                                  shape: BoxShape.circle,
+                                                ),
                                               ),
-
+                                              const SizedBox(width: 6),
+                                              const Text(
+                                                "Shift Active",
+                                                style: TextStyle(
+                                                  color: Colors.green,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      else
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: _bg,
+                                            borderRadius: BorderRadius.circular(20),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Container(
+                                                width: 8,
+                                                height: 8,
+                                                decoration: const BoxDecoration(
+                                                  color: Colors.grey,
+                                                  shape: BoxShape.circle,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              const Text(
+                                                "Not Clocked In",
+                                                style: TextStyle(
+                                                  color: Colors.grey,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    "SHIFT DURATION",
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: _isClockedIn ? Colors.white.withOpacity(0.8) : _ink2,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      if (_isClockedIn)
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          margin: const EdgeInsets.only(right: 16),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(0.15),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(Iconsax.clock, color: Colors.white, size: 28),
+                                        )
+                                      else
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          margin: const EdgeInsets.only(right: 16),
+                                          decoration: const BoxDecoration(
+                                            color: _bg,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(Iconsax.timer, color: _ink2, size: 28),
+                                        ),
+                                      if (_isClockedIn)
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                          children: [
+                                            _timeUnit(_shiftDuration.inHours.toString().padLeft(2, '0'), "HOURS", _isClockedIn),
+                                            _timeColon(_isClockedIn),
+                                            _timeUnit((_shiftDuration.inMinutes % 60).toString().padLeft(2, '0'), "MINUTES", _isClockedIn),
+                                            _timeColon(_isClockedIn),
+                                            _timeUnit((_shiftDuration.inSeconds % 60).toString().padLeft(2, '0'), "SECONDS", _isClockedIn),
+                                          ],
+                                        )
+                                      else
+                                        Column(
+                                          children: [
+                                            const Text(
+                                              "--:--:--",
+                                              style: TextStyle(
+                                                fontSize: 42,
+                                                fontWeight: FontWeight.w700,
+                                                color: _ink,
+                                                letterSpacing: 2,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            const Text(
+                                              "NOT CLOCKED IN",
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: _ink2,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                    ],
+                                  ),
+                                  if (_locationPermissionDenied)
+                                    Container(
+                                      margin: const EdgeInsets.only(top: 16),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                      decoration: BoxDecoration(
+                                        color: _isClockedIn ? Colors.white.withOpacity(0.12) : _bg,
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: _isClockedIn ? Colors.white.withOpacity(0.15) : _border,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            Iconsax.location_slash,
+                                            color: _isClockedIn ? Colors.white : _ink2,
+                                            size: 18,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              "Location permission required",
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                                color: _isClockedIn ? Colors.white.withOpacity(0.95) : _ink,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  const SizedBox(height: 24),
+                                  if (_isClockedIn) ...[
+                                    Divider(color: Colors.white.withOpacity(0.2), height: 1, thickness: 1),
+                                    const SizedBox(height: 16),
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: Row(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Container(
+                                                padding: const EdgeInsets.all(8),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white.withOpacity(0.15),
+                                                  borderRadius: BorderRadius.circular(10),
+                                                ),
+                                                child: const Icon(Iconsax.location, color: Colors.white, size: 18),
+                                              ),
                                               const SizedBox(width: 8),
-
                                               Expanded(
                                                 child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
                                                     Text(
-                                                      _locationPermissionDenied
-                                                          ? "Location Permission Required"
-                                                          : "Operative Location",
+                                                      "Operative Location",
                                                       style: TextStyle(
                                                         fontSize: 10,
-                                                        color: Colors.white
-                                                            .withOpacity(0.7),
-                                                        fontWeight:
-                                                            FontWeight.w500,
+                                                        color: Colors.white.withOpacity(0.7),
                                                       ),
                                                     ),
-
-                                                    const SizedBox(height: 2),
-
+                                                    const SizedBox(height: 4),
                                                     Text(
-                                                      _locationPermissionDenied
-                                                          ? "Enable location permission to show your live operative location."
-                                                          : _currentLocation,
-                                                      maxLines: 2,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                      softWrap: true,
+                                                      _locationPermissionDenied ? "Location Permission Required" : _currentLocation,
                                                       style: const TextStyle(
-                                                        fontSize: 10,
-                                                        fontWeight:
-                                                            FontWeight.w600,
+                                                        fontSize: 11,
+                                                        fontWeight: FontWeight.w500,
                                                         color: Colors.white,
+                                                      ),
+                                                      maxLines: 3,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Container(
+                                          width: 1,
+                                          height: 40,
+                                          color: Colors.white.withOpacity(0.2),
+                                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                                        ),
+                                        Expanded(
+                                          child: Row(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Container(
+                                                padding: const EdgeInsets.all(8),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white.withOpacity(0.15),
+                                                  borderRadius: BorderRadius.circular(10),
+                                                ),
+                                                child: const Icon(Iconsax.calendar, color: Colors.white, size: 18),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      "Clock In Time",
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: Colors.white.withOpacity(0.7),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      _formatClockInTime(_clockInTimeStr),
+                                                      style: const TextStyle(
+                                                        fontSize: 13,
+                                                        fontWeight: FontWeight.w600,
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      _formatClockInDate(_clockInTimeStr),
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: Colors.white.withOpacity(0.8),
                                                       ),
                                                     ),
                                                   ],
@@ -1044,10 +1265,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                           ),
                                         ),
                                       ],
-                                    ],
-                                  ),
-                                ),
-                              ],
+                                    ),
+                                  ]
+                                ],
+                              ),
                             ),
                           ),
 
@@ -1784,20 +2005,44 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             ),
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            height: announcements.length <= 1 && notifications.length <= 1
-                ? 120
-                : announcements.length <= 2 && notifications.length <= 2
-                ? 200
-                : 292,
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: 0,
+              maxHeight: MediaQuery.of(context).size.height * 0.42,
+            ),
             child: TabBarView(
               children: [
-                _buildNotificationsList(notifications),
-                _buildAnnouncementsList(announcements),
+                _buildScrollableSection(
+                  child: _buildNotificationsList(notifications),
+                  isEmpty: notifications.isEmpty,
+                ),
+
+                _buildScrollableSection(
+                  child: _buildAnnouncementsList(announcements),
+                  isEmpty: announcements.isEmpty,
+                ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildScrollableSection({
+    required Widget child,
+    required bool isEmpty,
+  }) {
+    if (isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Scrollbar(
+      thumbVisibility: true,
+      radius: const Radius.circular(20),
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: child,
       ),
     );
   }
@@ -1835,8 +2080,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   Widget _buildNotificationsList(List<AppNotificationModel> items) {
     return ListView.separated(
       padding: EdgeInsets.zero,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+      shrinkWrap: false,
+      physics: const ClampingScrollPhysics(),
       itemCount: items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
@@ -1860,9 +2105,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
   Widget _buildAnnouncementsList(List<AnnouncementModel> items) {
     return ListView.separated(
-      padding: EdgeInsets.zero,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+padding: const EdgeInsets.only(right: 4),      shrinkWrap: true,
+      physics: const ClampingScrollPhysics(),
       itemCount: items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, index) {

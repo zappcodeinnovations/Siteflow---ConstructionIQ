@@ -10,6 +10,8 @@ class CurrentClockSessionService {
   static const String _clockSessionIdKey = "clockSessionId";
   static const String _clockedInProjectNameKey = "clockedInProjectName";
 
+  static const String _clockInTimeKey = "clockInTime";
+
   static Future<CurrentClockSession> fetchCurrentSession() async {
     final response = await ApiClient.get(ApiEndpoints.currentClockSession);
     return CurrentClockSession.fromJson(response as Map<String, dynamic>);
@@ -37,6 +39,10 @@ class CurrentClockSessionService {
         _clockedInProjectNameKey,
         session.data!.projectName,
       );
+      await prefs.setString(
+        _clockInTimeKey,
+        session.data!.clockInTime,
+      );
 
       return session;
     } catch (e) {
@@ -52,6 +58,7 @@ class CurrentClockSessionService {
     await prefs.remove(_clockInStartMillisKey);
     await prefs.remove(_clockSessionIdKey);
     await prefs.remove(_clockedInProjectNameKey);
+    await prefs.remove(_clockInTimeKey);
   }
 }
 

@@ -7,6 +7,7 @@ import 'package:euroside/modules/profile/provider/profile_provider.dart';
 import 'package:euroside/modules/Dashboard/dashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 
 class NavigationScreen extends ConsumerStatefulWidget {
   const NavigationScreen({super.key});
@@ -18,6 +19,23 @@ class NavigationScreen extends ConsumerStatefulWidget {
 class _NavigationScreenState extends ConsumerState<NavigationScreen> {
   int _selectedIndex = 0;
   final Set<int> _loadedPages = {0, 1};
+  Timer? _sessionCheckTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _sessionCheckTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted) {
+        ref.read(profileControllerProvider.notifier).getProfile();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _sessionCheckTimer?.cancel();
+    super.dispose();
+  }
 
   List<Widget> get _pages => const [
     DashboardScreen(),

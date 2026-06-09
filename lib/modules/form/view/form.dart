@@ -1360,22 +1360,60 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
     final webViewBottomPadding = Platform.isIOS ? bottomInset + 140 : 60.0;
     final controlsBottom = 10.0 + bottomInset + (Platform.isIOS ? 8.0 : 0.0);
 
-    return Scaffold(
-      backgroundColor: const Color(0xffF4F7FB),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final bool shouldPop = await showDialog(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: const Text('Confirmation'),
+              content: const Text(
+                  'Are you sure you want to go back? Any unsaved data or filled information will be lost.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xff2563EB),
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('OK'),
+                ),
+              ],
+            );
+          },
+        ) ?? false;
 
-      appBar: AppBar(
-        elevation: 0,
+        if (shouldPop) {
+          if (context.mounted) {
+            Navigator.of(context).pop();
+          }
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xffF4F7FB),
 
-        title: Text(widget.title),
+        appBar: AppBar(
+          elevation: 0,
 
-        // actions: [
-        //   IconButton(
-        //     onPressed: _showUploadOptions,
+          title: Text(widget.title),
 
-        //     icon: const Icon(Icons.add_a_photo_rounded),
-        //   ),
-        // ],
-      ),
+          // actions: [
+          //   IconButton(
+          //     onPressed: _showUploadOptions,
+
+          //     icon: const Icon(Icons.add_a_photo_rounded),
+          //   ),
+          // ],
+        ),
 
       body: Stack(
         children: [
@@ -1485,6 +1523,7 @@ class _UserFormWebViewPageState extends State<UserFormWebViewPage> {
               ),
             ),
         ],
+      ),
       ),
     );
   }
