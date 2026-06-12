@@ -131,8 +131,11 @@ class FcmService {
       ),
     );
 
+    // Ensure the ID is a positive 32-bit integer for Android
+    final int notificationId = (message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch) & 0x7FFFFFFF;
+
     await _localNotifications.show(
-      id: message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch,
+      id: notificationId,
       title: title.isEmpty ? 'Euro Side' : title,
       body: body,
       notificationDetails: details,

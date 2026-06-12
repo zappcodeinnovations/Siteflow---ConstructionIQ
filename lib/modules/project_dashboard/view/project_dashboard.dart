@@ -525,128 +525,123 @@ class _WorkspaceDashboardPageState extends State<WorkspaceDashboardPage> {
                         child: Stack(
                           children: [
                             /// CARD
-                            Hero(
-                              tag: photo.imageUrl,
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
 
-                              child: Material(
-                                type: MaterialType.transparency,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
+                                borderRadius: BorderRadius.circular(24),
 
-                                    borderRadius: BorderRadius.circular(24),
+                                border: selectedPhotoIds.contains(photo.id)
+                                    ? Border.all(color: Colors.blue, width: 3)
+                                    : null,
 
-                                    border: selectedPhotoIds.contains(photo.id)
-                                        ? Border.all(color: Colors.blue, width: 3)
-                                        : null,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(.05),
 
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(.05),
+                                    blurRadius: 10,
 
-                                        blurRadius: 10,
-
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
+                                    offset: const Offset(0, 4),
                                   ),
+                                ],
+                              ),
 
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
 
-                                    children: [
-                                      /// IMAGE
-                                      Expanded(
-                                        child: ClipRRect(
-                                          borderRadius:
-                                              const BorderRadius.vertical(
-                                                top: Radius.circular(24),
-                                              ),
-
-                                          child: Image.network(
-                                            photo.imageUrl,
-
-                                            width: double.infinity,
-
-                                            fit: BoxFit.cover,
-
-                                            errorBuilder:
-                                                (context, error, stackTrace) {
-                                                  return Container(
-                                                    color: Colors.grey.shade200,
-
-                                                    child: const Center(
-                                                      child: Icon(
-                                                        Icons.broken_image,
-                                                      ),
-                                                    ),
-                                                  );
-                                                },
-                                          ),
-                                        ),
-                                      ),
-
-                                      /// DETAILS
-                                      Padding(
-                                        padding: const EdgeInsets.all(14),
-
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-
-                                          children: [
-                                            Text(
-                                              photo.fileName,
-
-                                              maxLines: 2,
-
-                                              overflow: TextOverflow.ellipsis,
-
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w700,
-                                                fontSize: 13,
-                                                height: 1.4,
-                                              ),
+                                children: [
+                                  /// IMAGE
+                                  Expanded(
+                                    child: Hero(
+                                      tag: photo.imageUrl,
+                                      child: ClipRRect(
+                                        borderRadius:
+                                            const BorderRadius.vertical(
+                                              top: Radius.circular(24),
                                             ),
 
-                                            const SizedBox(height: 6),
+                                        child: Image.network(
+                                          photo.imageUrl,
 
-                                            Row(
-                                              children: [
-                                                Icon(
-                                                  Icons.schedule,
-                                                  size: 14,
-                                                  color: Colors.grey.shade500,
-                                                ),
+                                          width: double.infinity,
 
-                                                const SizedBox(width: 6),
+                                          fit: BoxFit.cover,
 
-                                                Expanded(
-                                                  child: Text(
-                                                    _formatPhotoTimestamp(
-                                                      photo.createdAt,
-                                                    ),
+                                          errorBuilder:
+                                              (context, error, stackTrace) {
+                                                return Container(
+                                                  color: Colors.grey.shade200,
 
-                                                    maxLines: 1,
-
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-
-                                                    style: TextStyle(
-                                                      color: Colors.grey.shade600,
-                                                      fontSize: 11,
-                                                      height: 1.4,
+                                                  child: const Center(
+                                                    child: Icon(
+                                                      Icons.broken_image,
                                                     ),
                                                   ),
+                                                );
+                                              },
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+
+                                  /// DETAILS
+                                  Padding(
+                                    padding: const EdgeInsets.all(14),
+
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+
+                                      children: [
+                                        Text(
+                                          photo.fileName,
+
+                                          maxLines: 2,
+
+                                          overflow: TextOverflow.ellipsis,
+
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13,
+                                            height: 1.4,
+                                          ),
+                                        ),
+
+                                        const SizedBox(height: 6),
+
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              Icons.schedule,
+                                              size: 14,
+                                              color: Colors.grey.shade500,
+                                            ),
+
+                                            const SizedBox(width: 6),
+
+                                            Expanded(
+                                              child: Text(
+                                                _formatPhotoTimestamp(
+                                                  photo.createdAt,
                                                 ),
-                                              ],
+
+                                                maxLines: 1,
+
+                                                overflow: TextOverflow.ellipsis,
+
+                                                style: TextStyle(
+                                                  color: Colors.grey.shade600,
+                                                  fontSize: 11,
+                                                  height: 1.4,
+                                                ),
+                                              ),
                                             ),
                                           ],
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
                             ),
 

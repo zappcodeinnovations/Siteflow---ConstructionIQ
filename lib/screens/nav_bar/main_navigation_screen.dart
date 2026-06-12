@@ -26,7 +26,7 @@ class _NavigationScreenState extends ConsumerState<NavigationScreen> {
     super.initState();
     _sessionCheckTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted) {
-        ref.read(profileControllerProvider.notifier).getProfile();
+        ref.read(profileControllerProvider.notifier).getProfile(forceRefresh: true);
       }
     });
   }

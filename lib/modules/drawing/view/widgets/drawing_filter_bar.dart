@@ -53,7 +53,6 @@ class DrawingFilterBar extends StatelessWidget {
           /// HEADER
           Row(
             children: [
-
               Container(
                 width: 34,
                 height: 34,

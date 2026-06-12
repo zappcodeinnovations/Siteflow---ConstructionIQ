@@ -150,11 +150,21 @@ class _AllProjectDetailsPageState extends ConsumerState<AllProjectDetailsPage> {
 
       debugPrint("📍 STACKTRACE: $stackTrace");
 
-      final error = e.toString();
+      final errorStr = e.toString();
+      final backendMarker = errorStr.indexOf('|BACKEND_JSON|');
+      final cleanError = backendMarker != -1 ? errorStr.substring(0, backendMarker) : errorStr;
+      final lowerError = cleanError.toLowerCase();
 
-      final lowerError = error.toLowerCase();
+      debugPrint("🔥 BACKEND ERROR MESSAGE: $errorStr");
 
-      debugPrint("🔥 BACKEND ERROR MESSAGE: $error");
+      if (lowerError.contains('site location') ||
+          lowerError.contains('site area') ||
+          lowerError.contains('location mismatch')) {
+        _showLocationMismatchDialog(
+          message: cleanError.trim().replaceFirst('Exception: ', ''),
+        );
+        return;
+      }
 
       if (lowerError.contains("task") ||
           lowerError.contains("sheet") ||
@@ -164,13 +174,13 @@ class _AllProjectDetailsPageState extends ConsumerState<AllProjectDetailsPage> {
           lowerError.contains("fill")) {
         debugPrint("📋 TASK SHEET REQUIRED");
 
-        _showFormRequiredDialog(jobId: _extractJobIdFromError(error));
+        _showFormRequiredDialog(jobId: _extractJobIdFromError(errorStr));
 
         return;
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text("Error: $error")));
+      ).showSnackBar(SnackBar(content: Text("Error: $errorStr")));
     }
   }
 
@@ -391,6 +401,84 @@ class _AllProjectDetailsPageState extends ConsumerState<AllProjectDetailsPage> {
                       ),
                     ),
                   ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showLocationMismatchDialog({required String message}) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 68,
+                  height: 68,
+                  decoration: const BoxDecoration(
+                    color: Color(0xffFEF2F2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.location_off_rounded,
+                    color: Color(0xffDC2626),
+                    size: 34,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Location Mismatch',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xff0F172A),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: Color(0xff64748B),
+                  ),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xff2563EB),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text(
+                      'Okay',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
                 ),
               ],
             ),

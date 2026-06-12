@@ -60,6 +60,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   static const Color _accentLight = Color(0xFFEFF4FF);
   bool _locationPermissionDenied = false;
 
+  final ScrollController _notificationsScrollController = ScrollController();
+  final ScrollController _announcementsScrollController = ScrollController();
+
   String _formatClockInTime(String timeStr) {
     if (timeStr.isEmpty) return "--:--";
     try {
@@ -391,6 +394,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     FcmService.notificationTick.removeListener(_handlePushRefresh);
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    _notificationsScrollController.dispose();
+    _announcementsScrollController.dispose();
     super.dispose();
   }
 
@@ -536,14 +541,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
       handleSessionExpired(context, e);
 
-      final error = e.toString().toLowerCase();
-      if (error.contains('task') ||
-          error.contains('sheet') ||
-          error.contains('form') ||
-          error.contains('submit') ||
-          error.contains('required') ||
-          error.contains('fill')) {
-        _showFormRequiredDialog(jobId: _extractJobIdFromError(e.toString()));
+      final errorStr = e.toString();
+      final backendMarker = errorStr.indexOf('|BACKEND_JSON|');
+      final cleanError = backendMarker != -1
+          ? errorStr.substring(0, backendMarker)
+          : errorStr;
+      final lowerError = cleanError.toLowerCase();
+
+      if (lowerError.contains('site location') ||
+          lowerError.contains('site area') ||
+          lowerError.contains('location mismatch')) {
+        _showLocationMismatchDialog(
+          message: cleanError.trim().replaceFirst('Exception: ', ''),
+        );
+        return;
+      }
+
+      if (lowerError.contains('task') ||
+          lowerError.contains('sheet') ||
+          lowerError.contains('form') ||
+          lowerError.contains('submit') ||
+          lowerError.contains('required') ||
+          lowerError.contains('fill')) {
+        _showFormRequiredDialog(jobId: _extractJobIdFromError(errorStr));
         return;
       }
 
@@ -647,10 +667,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   ),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  'Please fill and submit the required form before clocking out. You can open the form page from here.',
+                Text(
+                  jobId != null
+                      ? 'Please fill and submit the required form before clocking out. You can open the form page from here.'
+                      : 'You have not created a job and no forms were selected for this project.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 13,
                     height: 1.5,
                     color: Color(0xff64748B),
@@ -695,7 +717,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text(
-                                  'Unable to open the task sheet for this job.',
+                                  'You have not created a job and no forms were selected for this project.',
                                 ),
                               ),
                             );
@@ -711,13 +733,91 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                           );
                         },
                         icon: const Icon(Icons.open_in_new, size: 18),
-                        label: const Text(
-                          'Fill Form',
-                          style: TextStyle(fontWeight: FontWeight.w600),
+                        label: Text(
+                          jobId != null ? 'Fill Form' : 'Okay',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                       ),
                     ),
                   ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showLocationMismatchDialog({required String message}) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 68,
+                  height: 68,
+                  decoration: const BoxDecoration(
+                    color: Color(0xffFEF2F2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.location_off_rounded,
+                    color: Color(0xffDC2626),
+                    size: 34,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Location Mismatch',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xff0F172A),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: Color(0xff64748B),
+                  ),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xff2563EB),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text(
+                      'Okay',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -970,7 +1070,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                   ? const LinearGradient(
                                       colors: [
                                         Color(0xFF4B8DF8),
-                                        Color(0xFF1E5EE6)
+                                        Color(0xFF1E5EE6),
                                       ],
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
@@ -998,15 +1098,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                               child: Column(
                                 children: [
                                   Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       if (_isClockedIn)
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 6,
+                                          ),
                                           decoration: BoxDecoration(
                                             color: Colors.white,
-                                            borderRadius: BorderRadius.circular(20),
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
                                           ),
                                           child: Row(
                                             children: [
@@ -1032,10 +1139,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                         )
                                       else
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 6,
+                                          ),
                                           decoration: BoxDecoration(
                                             color: _bg,
-                                            borderRadius: BorderRadius.circular(20),
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
                                           ),
                                           child: Row(
                                             children: [
@@ -1066,7 +1178,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                     "SHIFT DURATION",
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: _isClockedIn ? Colors.white.withOpacity(0.8) : _ink2,
+                                      color: _isClockedIn
+                                          ? Colors.white.withOpacity(0.8)
+                                          : _ink2,
                                       fontWeight: FontWeight.w600,
                                       letterSpacing: 1.2,
                                     ),
@@ -1078,33 +1192,67 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                       if (_isClockedIn)
                                         Container(
                                           padding: const EdgeInsets.all(12),
-                                          margin: const EdgeInsets.only(right: 16),
+                                          margin: const EdgeInsets.only(
+                                            right: 16,
+                                          ),
                                           decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(0.15),
+                                            color: Colors.white.withOpacity(
+                                              0.15,
+                                            ),
                                             shape: BoxShape.circle,
                                           ),
-                                          child: const Icon(Iconsax.clock, color: Colors.white, size: 28),
+                                          child: const Icon(
+                                            Iconsax.clock,
+                                            color: Colors.white,
+                                            size: 28,
+                                          ),
                                         )
                                       else
                                         Container(
                                           padding: const EdgeInsets.all(12),
-                                          margin: const EdgeInsets.only(right: 16),
+                                          margin: const EdgeInsets.only(
+                                            right: 16,
+                                          ),
                                           decoration: const BoxDecoration(
                                             color: _bg,
                                             shape: BoxShape.circle,
                                           ),
-                                          child: const Icon(Iconsax.timer, color: _ink2, size: 28),
+                                          child: const Icon(
+                                            Iconsax.timer,
+                                            color: _ink2,
+                                            size: 28,
+                                          ),
                                         ),
                                       if (_isClockedIn)
                                         Row(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.center,
                                           children: [
-                                            _timeUnit(_shiftDuration.inHours.toString().padLeft(2, '0'), "HOURS", _isClockedIn),
+                                            _timeUnit(
+                                              _shiftDuration.inHours
+                                                  .toString()
+                                                  .padLeft(2, '0'),
+                                              "HOURS",
+                                              _isClockedIn,
+                                            ),
                                             _timeColon(_isClockedIn),
-                                            _timeUnit((_shiftDuration.inMinutes % 60).toString().padLeft(2, '0'), "MINUTES", _isClockedIn),
+                                            _timeUnit(
+                                              (_shiftDuration.inMinutes % 60)
+                                                  .toString()
+                                                  .padLeft(2, '0'),
+                                              "MINUTES",
+                                              _isClockedIn,
+                                            ),
                                             _timeColon(_isClockedIn),
-                                            _timeUnit((_shiftDuration.inSeconds % 60).toString().padLeft(2, '0'), "SECONDS", _isClockedIn),
+                                            _timeUnit(
+                                              (_shiftDuration.inSeconds % 60)
+                                                  .toString()
+                                                  .padLeft(2, '0'),
+                                              "SECONDS",
+                                              _isClockedIn,
+                                            ),
                                           ],
                                         )
                                       else
@@ -1134,19 +1282,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                   if (_locationPermissionDenied)
                                     Container(
                                       margin: const EdgeInsets.only(top: 16),
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 10,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: _isClockedIn ? Colors.white.withOpacity(0.12) : _bg,
+                                        color: _isClockedIn
+                                            ? Colors.white.withOpacity(0.12)
+                                            : _bg,
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
-                                          color: _isClockedIn ? Colors.white.withOpacity(0.15) : _border,
+                                          color: _isClockedIn
+                                              ? Colors.white.withOpacity(0.15)
+                                              : _border,
                                         ),
                                       ),
                                       child: Row(
                                         children: [
                                           Icon(
                                             Iconsax.location_slash,
-                                            color: _isClockedIn ? Colors.white : _ink2,
+                                            color: _isClockedIn
+                                                ? Colors.white
+                                                : _ink2,
                                             size: 18,
                                           ),
                                           const SizedBox(width: 8),
@@ -1156,7 +1313,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                               style: TextStyle(
                                                 fontSize: 13,
                                                 fontWeight: FontWeight.w600,
-                                                color: _isClockedIn ? Colors.white.withOpacity(0.95) : _ink,
+                                                color: _isClockedIn
+                                                    ? Colors.white.withOpacity(
+                                                        0.95,
+                                                      )
+                                                    : _ink,
                                               ),
                                             ),
                                           ),
@@ -1165,45 +1326,65 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                     ),
                                   const SizedBox(height: 24),
                                   if (_isClockedIn) ...[
-                                    Divider(color: Colors.white.withOpacity(0.2), height: 1, thickness: 1),
+                                    Divider(
+                                      color: Colors.white.withOpacity(0.2),
+                                      height: 1,
+                                      thickness: 1,
+                                    ),
                                     const SizedBox(height: 16),
                                     Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Expanded(
                                           child: Row(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
                                             children: [
                                               Container(
-                                                padding: const EdgeInsets.all(8),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white.withOpacity(0.15),
-                                                  borderRadius: BorderRadius.circular(10),
+                                                padding: const EdgeInsets.all(
+                                                  8,
                                                 ),
-                                                child: const Icon(Iconsax.location, color: Colors.white, size: 18),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white
+                                                      .withOpacity(0.15),
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                                child: const Icon(
+                                                  Iconsax.location,
+                                                  color: Colors.white,
+                                                  size: 18,
+                                                ),
                                               ),
                                               const SizedBox(width: 8),
                                               Expanded(
                                                 child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
                                                   children: [
                                                     Text(
                                                       "Operative Location",
                                                       style: TextStyle(
                                                         fontSize: 10,
-                                                        color: Colors.white.withOpacity(0.7),
+                                                        color: Colors.white
+                                                            .withOpacity(0.7),
                                                       ),
                                                     ),
                                                     const SizedBox(height: 4),
                                                     Text(
-                                                      _locationPermissionDenied ? "Location Permission Required" : _currentLocation,
+                                                      _locationPermissionDenied
+                                                          ? "Location Permission Required"
+                                                          : _currentLocation,
                                                       style: const TextStyle(
                                                         fontSize: 11,
-                                                        fontWeight: FontWeight.w500,
+                                                        fontWeight:
+                                                            FontWeight.w500,
                                                         color: Colors.white,
                                                       ),
                                                       maxLines: 3,
-                                                      overflow: TextOverflow.ellipsis,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
                                                     ),
                                                   ],
                                                 ),
@@ -1215,50 +1396,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                           width: 1,
                                           height: 40,
                                           color: Colors.white.withOpacity(0.2),
-                                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                                          margin: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                          ),
                                         ),
                                         Expanded(
                                           child: Row(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
                                             children: [
                                               Container(
-                                                padding: const EdgeInsets.all(8),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white.withOpacity(0.15),
-                                                  borderRadius: BorderRadius.circular(10),
+                                                padding: const EdgeInsets.all(
+                                                  8,
                                                 ),
-                                                child: const Icon(Iconsax.calendar, color: Colors.white, size: 18),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      "Clock In Time",
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        color: Colors.white.withOpacity(0.7),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    Text(
-                                                      _formatClockInTime(_clockInTimeStr),
-                                                      style: const TextStyle(
-                                                        fontSize: 13,
-                                                        fontWeight: FontWeight.w600,
-                                                        color: Colors.white,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 2),
-                                                    Text(
-                                                      _formatClockInDate(_clockInTimeStr),
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        color: Colors.white.withOpacity(0.8),
-                                                      ),
-                                                    ),
-                                                  ],
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white
+                                                      .withOpacity(0.15),
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                                child: const Icon(
+                                                  Iconsax.calendar,
+                                                  color: Colors.white,
+                                                  size: 18,
                                                 ),
                                               ),
                                             ],
@@ -1266,7 +1426,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                         ),
                                       ],
                                     ),
-                                  ]
+                                  ],
                                 ],
                               ),
                             ),
@@ -2078,7 +2238,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   Widget _buildNotificationsList(List<AppNotificationModel> items) {
-    return ListView.separated(
+    Widget list = ListView.separated(
+      controller: _notificationsScrollController,
       padding: EdgeInsets.zero,
       shrinkWrap: false,
       physics: const ClampingScrollPhysics(),
@@ -2101,11 +2262,25 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         );
       },
     );
+
+    if (items.length > 2) {
+      return RawScrollbar(
+        controller: _notificationsScrollController,
+        thumbColor: Colors.grey.shade400,
+        radius: const Radius.circular(8),
+        thickness: 4,
+        thumbVisibility: true,
+        child: list,
+      );
+    }
+    return list;
   }
 
   Widget _buildAnnouncementsList(List<AnnouncementModel> items) {
-    return ListView.separated(
-padding: const EdgeInsets.only(right: 4),      shrinkWrap: true,
+    Widget list = ListView.separated(
+      controller: _announcementsScrollController,
+      padding: const EdgeInsets.only(right: 4),
+      shrinkWrap: true,
       physics: const ClampingScrollPhysics(),
       itemCount: items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
@@ -2142,6 +2317,18 @@ padding: const EdgeInsets.only(right: 4),      shrinkWrap: true,
         );
       },
     );
+
+    if (items.length > 2) {
+      return RawScrollbar(
+        controller: _announcementsScrollController,
+        thumbColor: Colors.grey.shade400,
+        radius: const Radius.circular(8),
+        thickness: 4,
+        thumbVisibility: true,
+        child: list,
+      );
+    }
+    return list;
   }
 
   Widget _updateTile({

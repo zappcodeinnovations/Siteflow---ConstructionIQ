@@ -151,6 +151,18 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
       return 'Please fill in all required fields.';
     }
 
+    if (cleanedError.contains('too common')) {
+      return 'This password is too common. Please try a different one.';
+    }
+
+    if (cleanedError.contains('entirely numeric')) {
+      return 'This password is entirely numeric. Please include letters.';
+    }
+
+    if (cleanedError.contains('too similar')) {
+      return 'This password is too similar to your email or username. Please choose a different one.';
+    }
+
     if (cleanedError.contains('network error') ||
         cleanedError.contains('socketexception') ||
         cleanedError.contains('failed host lookup')) {
