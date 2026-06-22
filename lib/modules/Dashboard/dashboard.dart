@@ -1,5 +1,4 @@
 import 'dart:convert';
-
 import 'dart:async';
 import 'package:euroside/modules/Auth/view/auth_view.dart';
 import 'package:euroside/modules/all_projects/provider/all_project_provider.dart';
@@ -1392,38 +1391,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                             ],
                                           ),
                                         ),
-                                        Container(
-                                          width: 1,
-                                          height: 40,
-                                          color: Colors.white.withOpacity(0.2),
-                                          margin: const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                          ),
-                                        ),
-                                        Expanded(
-                                          child: Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Container(
-                                                padding: const EdgeInsets.all(
-                                                  8,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white
-                                                      .withOpacity(0.15),
-                                                  borderRadius:
-                                                      BorderRadius.circular(10),
-                                                ),
-                                                child: const Icon(
-                                                  Iconsax.calendar,
-                                                  color: Colors.white,
-                                                  size: 18,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
+
                                       ],
                                     ),
                                   ],

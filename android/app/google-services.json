@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "540745647768",
-    "project_id": "euroside-ab948",
-    "storage_bucket": "euroside-ab948.firebasestorage.app"
+    "project_number": "642288285590",
+    "project_id": "euroside-16ac1",
+    "storage_bucket": "euroside-16ac1.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:540745647768:android:b457b786f872c25c0672ed",
+        "mobilesdk_app_id": "1:642288285590:android:ea81756a2e341fde69cfb7",
         "android_client_info": {
-          "package_name": "com.euroside.app"
+          "package_name": "com.zappkode.euroside"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCeZZtaiADirEhgs3pG4Ombrdm8huXaBV0"
+          "current_key": "AIzaSyBOUzDq4Xv-rxq0SEEVlymluismEd2wC1U"
         }
       ],
       "services": {
