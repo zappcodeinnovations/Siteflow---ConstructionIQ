@@ -17,7 +17,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
 
-    namespace = "com.zappkode.euroside"
+    namespace = "com.siteflow.constructioniq"
 
     compileSdk = flutter.compileSdkVersion
 
@@ -43,7 +43,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.zappkode.euroside"
+        applicationId = "com.siteflow.constructioniq"
 
         minSdk = 24
 

@@ -119,7 +119,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
             child: ClipRRect(
               // borderRadius: BorderRadius.circular(20),
               child: Image.asset(
-                'assets/logo/Euroside_Logo.png',
+                'assets/logo/2.png',
                 fit: BoxFit.fill,
               ),
             ),

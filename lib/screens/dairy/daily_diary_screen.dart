@@ -74,17 +74,10 @@ class _DailyDiaryScreenState extends State<DailyDiaryScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
-            children: const [
-              Icon(Icons.settings_input_antenna, size: 22, color: Colors.black),
-              SizedBox(width: 6),
-              Text(
-                'EUROSIDE',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
-                  color: Colors.black,
-                ),
+            children: [
+              Image.asset(
+                'assets/logo/2.png',
+                height: 24,
               ),
             ],
           ),
@@ -127,7 +120,7 @@ class _DailyDiaryScreenState extends State<DailyDiaryScreen> {
         ),
         const SizedBox(height: 4),
         const Text(
-          'Project: Euroside Industrial Hub \u2022 Zone 04',
+          'Project: Industrial Hub \u2022 Zone 04',
           style: TextStyle(
             fontSize: 13,
             color: Color(0xFF666666),

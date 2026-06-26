@@ -252,7 +252,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
                   ),
                   padding: const EdgeInsets.all(10),
                   child: Image.asset(
-                    'assets/logo/Euroside_Logo.png',
+                    'assets/logo/2.png',
                     fit: BoxFit.contain,
                   ),
                 ),

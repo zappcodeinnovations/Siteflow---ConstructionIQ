@@ -1,4 +1,4 @@
-package com.zappkode.euroside
+package com.siteflow.constructioniq
 
 import io.flutter.embedding.android.FlutterActivity
 

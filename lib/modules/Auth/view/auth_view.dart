@@ -429,7 +429,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   ),
                   padding: const EdgeInsets.all(10),
                   child: Image.asset(
-                    'assets/logo/Euroside_Logo.png',
+                    'assets/logo/2.png',
                     fit: BoxFit.contain,
                   ),
                 ),

@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "642288285590",
-    "project_id": "euroside-16ac1",
-    "storage_bucket": "euroside-16ac1.firebasestorage.app"
+    "project_number": "622752582113",
+    "project_id": "siteflow-494e6",
+    "storage_bucket": "siteflow-494e6.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:642288285590:android:ea81756a2e341fde69cfb7",
+        "mobilesdk_app_id": "1:622752582113:android:ac057e72a29a012bbeeaa0",
         "android_client_info": {
-          "package_name": "com.zappkode.euroside"
+          "package_name": "com.siteflow.constructioniq"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBOUzDq4Xv-rxq0SEEVlymluismEd2wC1U"
+          "current_key": "AIzaSyDs1sgcZgYVMwgai5JNGJpW8pzGkPSlCE0"
         }
       ],
       "services": {

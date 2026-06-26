@@ -217,25 +217,9 @@ class EurosideLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          Icons.precision_manufacturing,
-          size: 24,
-          color: dark ? const Color(0xFF0A0A0A) : const Color(0xFF0A0A0A),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          'EUROSIDE',
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.5,
-            color: dark ? const Color(0xFF0A0A0A) : const Color(0xFF0A0A0A),
-          ),
-        ),
-      ],
+    return Image.asset(
+      'assets/logo/2.png',
+      height: 48,
     );
   }
 }

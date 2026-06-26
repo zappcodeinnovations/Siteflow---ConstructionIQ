@@ -1014,7 +1014,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               Image.asset(
-                                "assets/logo/Euroside_Logo.png",
+                                "assets/logo/2.png",
                                 height: 32,
                               ),
                               Row(
