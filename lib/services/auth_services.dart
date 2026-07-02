@@ -44,6 +44,74 @@ class AuthService {
     return response;
   }
 
+  // Operative Register
+  static Future<Map<String, dynamic>> operativeRegister({
+    required String email,
+    required String username,
+    required String password,
+    required String confirmPassword,
+    required String firstName,
+    required String lastName,
+    required String phone,
+  }) async {
+    final payload = {
+      'email': email,
+      'username': username,
+      'password': password,
+      'confirm_password': confirmPassword,
+      'first_name': firstName,
+      'last_name': lastName,
+      'phone': phone,
+    };
+
+    // ignore: avoid_print
+    print('[AuthService][operativeRegister] request payload: $payload');
+
+    final response = await ApiClient.post(
+      ApiEndpoints.operativeRegister,
+      payload,
+      includeAuth: false,
+    );
+
+    // Save tokens if available
+    if (response["tokens"] != null) {
+      final tokens = response["tokens"];
+      await TokenManager.saveTokens(tokens["access"], tokens["refresh"]);
+    }
+
+    return response;
+  }
+
+  // Operative Delete Account
+  static Future<Map<String, dynamic>> operativeDeleteAccount() async {
+    if (defaultTargetPlatform != TargetPlatform.iOS) {
+      throw UnsupportedError("Delete account is only supported on iOS.");
+    }
+    
+    final refreshToken = await TokenManager.getRefreshToken();
+    if (refreshToken == null) {
+      throw Exception("No refresh token found. Cannot delete account.");
+    }
+    
+    final payload = {
+      'refresh': refreshToken,
+    };
+
+    // ignore: avoid_print
+    print('[AuthService][operativeDeleteAccount] request payload: $payload');
+
+    final response = await ApiClient.post(
+      ApiEndpoints.operativeDeleteAccount,
+      payload,
+      includeAuth: true,
+    );
+
+    // Clear tokens after successful deletion
+    await TokenManager.clearAll();
+
+    return response;
+  }
+
   // Normal Token Login
   static Future<Map<String, dynamic>> login({
     required String email,

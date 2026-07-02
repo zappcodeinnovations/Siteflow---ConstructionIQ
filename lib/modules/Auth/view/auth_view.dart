@@ -4,6 +4,9 @@ import 'package:euroside/modules/Auth/view/set_password.dart';
 import 'package:euroside/screens/nav_bar/main_navigation_screen.dart';
 import 'package:euroside/utils/google_fonts_fallback.dart';
 import 'package:euroside/utils/user_session_cache.dart';
+import 'dart:io' show Platform;
+import 'package:euroside/network/api_client.dart';
+import 'package:euroside/network/api_endpoint.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
@@ -27,6 +30,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _sessionWarningDialogShown = false;
+  bool _showRegistrationSection = true;
 
   static const Color _accentBlue = Color(0xFF003DA5);
   static const Color _pageBg = Color(0xFFF5F6FA);
@@ -272,6 +276,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   @override
   void initState() {
     super.initState();
+    if (Platform.isIOS) {
+      _showRegistrationSection = false;
+      _fetchRegistrationStatus();
+    }
+    
     Future.microtask(() {
       ref.read(authControllerProvider.notifier).clearMessages();
     });
@@ -285,6 +294,22 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         );
       }
     });
+  }
+
+  Future<void> _fetchRegistrationStatus() async {
+    try {
+      final response = await ApiClient.get(ApiEndpoints.registrationStatus);
+      final bool isRegistrationEnabled = response['registration_enabled'] == true;
+      final bool status = response['status'] == true;
+      
+      if (mounted) {
+        setState(() {
+          _showRegistrationSection = isRegistrationEnabled || status;
+        });
+      }
+    } catch (e) {
+      print("Failed to fetch registration status: $e");
+    }
   }
 
   @override
@@ -724,37 +749,37 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 ),
               ),
 
-              const SizedBox(height: 48),
-
-              // ── Don't have account ────────────────────────────────────
-              // Center(
-              //   child: RichText(
-              //     text: TextSpan(
-              //       style: GoogleFonts.inter(
-              //         fontSize: 13,
-              //         color: Colors.black45,
-              //       ),
-              //       children: [
-              //         const TextSpan(text: "Don't have an account? "),
-              //         WidgetSpan(
-              //           child: GestureDetector(
-              //             onTap: () {
-              //               /* navigate to register */
-              //             },
-              //             child: Text(
-              //               'Sign up',
-              //               style: GoogleFonts.inter(
-              //                 fontSize: 13,
-              //                 fontWeight: FontWeight.w600,
-              //                 color: _accentBlue,
-              //               ),
-              //             ),
-              //           ),
-              //         ),
-              //       ],
-              //     ),
-              //   ),
-              // ),
+              if (_showRegistrationSection) ...[
+                const SizedBox(height: 48),
+                Center(
+                  child: RichText(
+                    text: TextSpan(
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: Colors.black45,
+                      ),
+                      children: [
+                        const TextSpan(text: "Don't have an account? "),
+                        WidgetSpan(
+                          child: GestureDetector(
+                            onTap: () {
+                              /* navigate to register */
+                            },
+                            child: Text(
+                              'Sign up',
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: _accentBlue,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
             ],
           ),
