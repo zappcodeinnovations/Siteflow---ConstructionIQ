@@ -239,56 +239,41 @@ class _DropdownField<T> extends StatelessWidget {
   Widget build(BuildContext context) {
 
     return DropdownButtonFormField<T>(
-
       value: value,
-
       isExpanded: true,
-
       items: items,
-
       onChanged: onChanged,
-
+      menuMaxHeight: 300,
       icon: const Icon(
         Icons.keyboard_arrow_down_rounded,
         color: Colors.grey,
       ),
-
       dropdownColor: Colors.white,
-
       borderRadius: BorderRadius.circular(14),
-
       decoration: InputDecoration(
-
         labelText: label,
-
         labelStyle: const TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w500,
         ),
-
         filled: true,
-
         fillColor: const Color(0xFFF8FAFC),
-
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 14,
           vertical: 14,
         ),
-
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(
             color: Color(0xFFE5E7EB),
           ),
         ),
-
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(
             color: Color(0xFFE5E7EB),
           ),
         ),
-
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(
@@ -300,3 +285,4 @@ class _DropdownField<T> extends StatelessWidget {
     );
   }
 }
+

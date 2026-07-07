@@ -107,15 +107,11 @@ class AuthController extends StateNotifier<AuthState> {
       print("📡 LOGIN RESPONSE: $response");
 
       AuthResponse authResponse = AuthResponse.fromJson(response);
-      final hasLocalPasswordSetupRecord =
-          await TokenManager.hasPasswordSetValue(email);
-      final shouldSetPassword =
-          !authResponse.user.isPasswordSet || !hasLocalPasswordSetupRecord;
+      final shouldSetPassword = !authResponse.user.isPasswordSet;
 
       print(
         "🧭 [LOGIN FLOW] email=$email "
         "isPasswordSet=${authResponse.user.isPasswordSet} "
-        "hasLocalPasswordSetupRecord=$hasLocalPasswordSetupRecord "
         "shouldOpenSetPassword=$shouldSetPassword",
       );
 

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../provider/clock_in_provider.dart';
 import 'dart:convert';
+import 'dart:ui';
 
 class ClockInScreen extends ConsumerStatefulWidget {
   final int projectId;
@@ -73,6 +74,109 @@ class _ClockInScreenState extends ConsumerState<ClockInScreen> {
         isClockedInForThisProject = false;
       });
     }
+  }
+
+  void _showTooFarDialog() {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withOpacity(0.5),
+      barrierLabel: "Dismiss",
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset(
+                  'assets/logo/not_match.png',
+                  height: 180,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      height: 180,
+                      width: 180,
+                      color: Colors.red.shade50,
+                      child: const Icon(Icons.warning_rounded, color: Colors.red, size: 80),
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  "Location Out of Range",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFFDC2626),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  "You are too far from the authorized operative location. Please move closer to the site boundary before attempting to clock in.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: Color(0xFF6B7280),
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE53935),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      "Got it",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        // Prevent blur when animation is 0 to avoid crash
+        final sigma = (8 * animation.value).clamp(0.001, 8.0);
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+          child: ScaleTransition(
+            scale: CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+            child: child,
+          ),
+        );
+      },
+    );
   }
 
   String _cleanErrorMessage(Object error) {
@@ -162,6 +266,7 @@ class _ClockInScreenState extends ConsumerState<ClockInScreen> {
           statusMessage = "❌ You are not at the site location";
           statusColor = Colors.orange;
         });
+        _showTooFarDialog();
       }
     } catch (e) {
       final message = _cleanErrorMessage(e);
@@ -219,10 +324,18 @@ class _ClockInScreenState extends ConsumerState<ClockInScreen> {
         });
         return;
       }
-      setState(() {
-        statusMessage = "❌ $message";
-        statusColor = Colors.red;
-      });
+      if (message.toLowerCase().contains('too far') || e.toString().contains('"within_allowed_radius":false')) {
+        setState(() {
+          statusMessage = "❌ You are not at the site location";
+          statusColor = Colors.orange;
+        });
+        _showTooFarDialog();
+      } else {
+        setState(() {
+          statusMessage = "❌ $message";
+          statusColor = Colors.red;
+        });
+      }
     } finally {
       setState(() {
         isLoading = false;

@@ -88,7 +88,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         Text(
           value,
           style: TextStyle(
-            fontSize: 42,
+            fontSize: 30,
             fontWeight: FontWeight.w700,
             color: isClockedIn ? Colors.white : _ink,
           ),
@@ -1015,7 +1015,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                             children: [
                               Image.asset(
                                 "assets/logo/2.png",
-                                height: 32,
+                                height: 50,
                               ),
                               Row(
                                 children: [
@@ -1092,11 +1092,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                 ),
                               ],
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(20),
-                              child: Column(
+                            child: IntrinsicHeight(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  Row(
+                                  Expanded(
+                                    flex: 3,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(20),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
                                     mainAxisAlignment:
                                         MainAxisAlignment.spaceBetween,
                                     crossAxisAlignment:
@@ -1162,7 +1169,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                               const Text(
                                                 "Not Clocked In",
                                                 style: TextStyle(
-                                                  color: Colors.grey,
+                                                  color: _ink,
                                                   fontSize: 12,
                                                   fontWeight: FontWeight.w600,
                                                 ),
@@ -1176,17 +1183,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                   Text(
                                     "SHIFT DURATION",
                                     style: TextStyle(
-                                      fontSize: 12,
+                                      fontSize: 10,
                                       color: _isClockedIn
                                           ? Colors.white.withOpacity(0.8)
                                           : _ink2,
                                       fontWeight: FontWeight.w600,
-                                      letterSpacing: 1.2,
+                                      letterSpacing: 1,
                                     ),
                                   ),
                                   const SizedBox(height: 8),
                                   Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisAlignment: MainAxisAlignment.start,
                                     children: [
                                       if (_isClockedIn)
                                         Container(
@@ -1203,7 +1210,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                           child: const Icon(
                                             Iconsax.clock,
                                             color: Colors.white,
-                                            size: 28,
+                                            size: 20,
                                           ),
                                         )
                                       else
@@ -1218,7 +1225,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                           ),
                                           child: const Icon(
                                             Iconsax.timer,
-                                            color: _ink2,
+                                            color: _ink,
                                             size: 28,
                                           ),
                                         ),
@@ -1256,18 +1263,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                         )
                                       else
                                         Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             const Text(
                                               "--:--:--",
                                               style: TextStyle(
-                                                fontSize: 42,
+                                                fontSize: 28,
                                                 fontWeight: FontWeight.w700,
                                                 color: _ink,
-                                                letterSpacing: 2,
+                                                letterSpacing: 1,
                                               ),
                                             ),
-                                            const SizedBox(height: 2),
-                                            const Text(
+                                            const SizedBox(height: 5),
+                                            Text(
                                               "NOT CLOCKED IN",
                                               style: TextStyle(
                                                 fontSize: 10,
@@ -1395,6 +1403,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                       ],
                                     ),
                                   ],
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: ClipRRect(
+                                      borderRadius: const BorderRadius.only(
+                                        topRight: Radius.circular(16),
+                                        bottomRight: Radius.circular(16),
+                                      ),
+                                      child: Image.asset(
+                                        'assets/logo/hero.png',
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
