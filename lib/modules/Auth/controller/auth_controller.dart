@@ -152,6 +152,64 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
+  // 📝 REGISTER
+  Future<bool> register({
+    required String email,
+    required String username,
+    required String password,
+    required String confirmPassword,
+    required String firstName,
+    required String lastName,
+    required String phone,
+  }) async {
+    try {
+      state = state.copyWith(
+        isLoading: true,
+        error: null,
+        successMessage: null,
+        clearSessionWarning: true,
+        clearUser: true,
+      );
+
+      print("📝 [REGISTER FLOW] Starting registration for email=$email");
+
+      final response = await AuthService.operativeRegister(
+        email: email,
+        username: username,
+        password: password,
+        confirmPassword: confirmPassword,
+        firstName: firstName,
+        lastName: lastName,
+        phone: phone,
+      );
+
+      print("✅ [REGISTER FLOW] API response received for email=$email");
+
+      AuthResponse authResponse = AuthResponse.fromJson(response);
+      final shouldSetPassword = !authResponse.user.isPasswordSet;
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool("isLoggedIn", true);
+      await prefs.setString("user_email", email);
+      await TokenManager.setPasswordSet(email, !shouldSetPassword);
+
+      if (!shouldSetPassword) {
+        await CurrentClockSessionService.syncCurrentSession();
+      }
+
+      state = state.copyWith(isLoading: false, user: authResponse.user);
+
+      return shouldSetPassword;
+    } catch (e, stackTrace) {
+      print('❌ [REGISTER ERROR]: $e');
+      print('📍 STACKTRACE: $stackTrace');
+
+      _setError(_handleError(e));
+
+      return false;
+    }
+  }
+
   Future<bool> logoutOtherDevice(String email) async {
     try {
       state = state.copyWith(

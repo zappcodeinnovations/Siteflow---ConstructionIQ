@@ -84,10 +84,6 @@ class AuthService {
 
   // Operative Delete Account
   static Future<Map<String, dynamic>> operativeDeleteAccount() async {
-    if (defaultTargetPlatform != TargetPlatform.iOS) {
-      throw UnsupportedError("Delete account is only supported on iOS.");
-    }
-    
     final refreshToken = await TokenManager.getRefreshToken();
     if (refreshToken == null) {
       throw Exception("No refresh token found. Cannot delete account.");
@@ -100,10 +96,9 @@ class AuthService {
     // ignore: avoid_print
     print('[AuthService][operativeDeleteAccount] request payload: $payload');
 
-    final response = await ApiClient.post(
+    final response = await ApiClient.delete(
       ApiEndpoints.operativeDeleteAccount,
-      payload,
-      includeAuth: true,
+      body: payload,
     );
 
     // Clear tokens after successful deletion

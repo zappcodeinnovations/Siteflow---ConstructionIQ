@@ -1,5 +1,6 @@
 import 'package:euroside/modules/Auth/provider/auth_provider.dart';
 import 'package:euroside/modules/Auth/view/forgot_password_view.dart';
+import 'package:euroside/modules/Auth/view/register_view.dart';
 import 'package:euroside/modules/Auth/view/set_password.dart';
 import 'package:euroside/screens/nav_bar/main_navigation_screen.dart';
 import 'package:euroside/utils/google_fonts_fallback.dart';
@@ -30,7 +31,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _sessionWarningDialogShown = false;
-  bool _showRegistrationSection = true;
+  bool _showRegistrationSection = false;
 
   static const Color _accentBlue = Color(0xFF003DA5);
   static const Color _pageBg = Color(0xFFF5F6FA);
@@ -280,7 +281,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       _showRegistrationSection = false;
       _fetchRegistrationStatus();
     }
-    
+
     Future.microtask(() {
       ref.read(authControllerProvider.notifier).clearMessages();
     });
@@ -299,9 +300,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   Future<void> _fetchRegistrationStatus() async {
     try {
       final response = await ApiClient.get(ApiEndpoints.registrationStatus);
-      final bool isRegistrationEnabled = response['registration_enabled'] == true;
+      final bool isRegistrationEnabled =
+          response['registration_enabled'] == true;
       final bool status = response['status'] == true;
-      
+
       if (mounted) {
         setState(() {
           _showRegistrationSection = isRegistrationEnabled || status;
@@ -453,10 +455,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     borderRadius: BorderRadius.circular(18),
                   ),
                   padding: const EdgeInsets.all(10),
-                  child: Image.asset(
-                    'assets/logo/2.png',
-                    fit: BoxFit.contain,
-                  ),
+                  child: Image.asset('assets/logo/2.png', fit: BoxFit.contain),
                 ),
               ),
 
@@ -763,7 +762,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         WidgetSpan(
                           child: GestureDetector(
                             onTap: () {
-                              /* navigate to register */
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const RegisterScreen(),
+                                ),
+                              );
                             },
                             child: Text(
                               'Sign up',

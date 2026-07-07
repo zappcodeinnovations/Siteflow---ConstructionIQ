@@ -7,6 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:euroside/services/session_logout_router.dart';
+import 'package:euroside/network/api_client.dart';
+import 'package:euroside/network/api_endpoint.dart';
+import 'package:euroside/services/auth_services.dart';
+import 'dart:io' show Platform;
 import '../model/profile_model.dart';
 import '../provider/profile_provider.dart';
 
@@ -43,14 +47,36 @@ class ProfileView extends ConsumerStatefulWidget {
 
 class _ProfileViewState extends ConsumerState<ProfileView> {
   bool isLoggingOut = false;
+  bool isDeletingAccount = false;
+  bool _showDeleteAccount = false;
 
   @override
   void initState() {
     super.initState();
+    if (Platform.isIOS) {
+      _fetchRegistrationStatus();
+    }
     Future.microtask(() async {
       await ref.read(profileControllerProvider.notifier).getProfile();
       await ref.read(profileControllerProvider.notifier).checkLocationStatus();
     });
+  }
+
+  Future<void> _fetchRegistrationStatus() async {
+    try {
+      final response = await ApiClient.get(ApiEndpoints.registrationStatus);
+      final bool isRegistrationEnabled =
+          response['registration_enabled'] == true;
+      final bool status = response['status'] == true;
+
+      if (mounted) {
+        setState(() {
+          _showDeleteAccount = isRegistrationEnabled || status;
+        });
+      }
+    } catch (e) {
+      print("Failed to fetch registration status for delete account: $e");
+    }
   }
 
   // ── helpers ──────────────────────────────────
@@ -238,6 +264,12 @@ class _ProfileViewState extends ConsumerState<ProfileView> {
                     _buildLogoutButton(),
 
                     const SizedBox(height: 16),
+
+                    if (_showDeleteAccount) ...[
+                      // ── DELETE ACCOUNT ──────────────────────
+                      _buildDeleteAccountButton(),
+                      const SizedBox(height: 16),
+                    ],
                   ],
                 ),
               ),
@@ -408,6 +440,117 @@ class _ProfileViewState extends ConsumerState<ProfileView> {
               ),
       ),
     );
+  }
+
+  // ── delete account button ─────────────────────
+  Widget _buildDeleteAccountButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: OutlinedButton(
+        onPressed: isDeletingAccount ? null : _handleDeleteAccount,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _C.redText,
+          side: const BorderSide(color: _C.redBorder, width: 1.2),
+          backgroundColor: isDeletingAccount ? _C.badgeBg : _C.surface,
+          disabledForegroundColor: _C.textLabel,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 0,
+        ),
+        child: isDeletingAccount
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: _C.redText,
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.delete_forever_rounded, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Delete Account',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Future<void> _handleDeleteAccount() async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete Account', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+        content: Text(
+          'Are you sure you want to delete your account? This action cannot be undone.',
+          style: GoogleFonts.inter(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text('Cancel', style: GoogleFonts.inter(color: Colors.grey[700])),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text('Delete', style: GoogleFonts.inter(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => isDeletingAccount = true);
+
+    try {
+      await AuthService.operativeDeleteAccount();
+      
+      final messenger = SessionLogoutRouter.scaffoldMessengerKey.currentState;
+      final navigator = SessionLogoutRouter.navigatorKey.currentState;
+
+      resetUserSessionCache(ref);
+      
+      if (messenger != null) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Account deleted successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+
+      if (navigator != null) {
+        navigator.pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => const SignInScreen(),
+          ),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete account: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => isDeletingAccount = false);
+      }
+    }
   }
 }
 

@@ -32,7 +32,8 @@ class ApiEndpoints {
   static const String login = "token/";
   static const String refreshToken = "token/refresh/";
   static const String operativeLogin = "operative/login/";
-  static const String registrationStatus = "operative/registration-status/";
+  // static const String registrationStatus = "operative/registration-status/";
+  static const String registrationStatus = "auth/registration-status/";
   static const String operativeRegister = "operative/register/";
   static const String operativeDeleteAccount = "operative/delete-account/";
   static const String logout = "operative/logout/";

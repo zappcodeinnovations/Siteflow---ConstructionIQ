@@ -257,12 +257,13 @@ class ApiClient {
   }
 
   /// ✅ DELETE API
-  static Future<dynamic> delete(String endpoint) async {
+  static Future<dynamic> delete(String endpoint, {Map<String, dynamic>? body}) async {
     try {
       final response = await http
           .delete(
             Uri.parse(ApiEndpoints.baseUrl + endpoint),
             headers: await _getHeaders(),
+            body: body != null ? jsonEncode(body) : null,
           )
           .timeout(const Duration(seconds: 20));
       return _handleResponse(response);
@@ -273,6 +274,7 @@ class ApiClient {
           final retryResponse = await http.delete(
             Uri.parse(ApiEndpoints.baseUrl + endpoint),
             headers: await _getHeaders(),
+            body: body != null ? jsonEncode(body) : null,
           );
           return _handleResponse(retryResponse);
         }
