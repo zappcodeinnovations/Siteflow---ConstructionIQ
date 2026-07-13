@@ -132,6 +132,34 @@ class AllprojectModel {
 
     return value.toString();
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'code': code,
+      'description': description,
+      'status': status,
+      'priority': priority,
+      'site_address': siteAddress,
+      'city': city,
+      'state': state,
+      'country': country,
+      'postal_code': postalCode,
+      'latitude': latitude,
+      'longitude': longitude,
+      'progress': progress,
+      'start_date': startDate,
+      'end_date': endDate,
+      'budget': budget,
+      'assigned_worker_count': assignedWorkerCount,
+      'job_count': jobCount,
+      'client': client?.toJson(),
+      'template': template?.toJson(),
+      'contractor': contractor?.toJson(),
+      'team_members': teamMembers.map((e) => e.toJson()).toList(),
+    };
+  }
 }
 
 class ProjectMeta {
@@ -162,6 +190,15 @@ class ProjectMeta {
     }
 
     return null;
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'code': code,
+      'status': status,
+    };
   }
 }
 
@@ -234,5 +271,15 @@ class ProjectTeamMember {
     }
 
     return '';
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'role': role,
+      'email': email,
+      'phone': phone,
+    };
   }
 }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:euroside/modules/all_projects/controller/all_project_state.dart';
 import 'package:euroside/modules/all_projects/model/all_project_model.dart';
 import 'package:euroside/services/all_project_service.dart';
+import 'package:euroside/services/local_project_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -56,9 +57,13 @@ class AllProjectController extends StateNotifier<AllProjectState> {
           .map((e) => AllprojectModel.fromJson(e))
           .toList();
 
-      print("✅ PROJECT COUNT: ${projectModels.length}");
+      final localProjects = await LocalProjectService.getLocalProjects();
+      
+      final allProjects = [...localProjects, ...projectModels];
 
-      state = state.copyWith(isLoading: false, projects: projectModels);
+      print("✅ PROJECT COUNT: ${allProjects.length}");
+
+      state = state.copyWith(isLoading: false, projects: allProjects);
     } catch (e) {
       debugPrint("❌ FETCH ERROR: $e");
 
@@ -79,6 +84,13 @@ class AllProjectController extends StateNotifier<AllProjectState> {
     } catch (e) {
       _setError(_handleError(e));
     }
+  }
+
+  /// ADD LOCAL PROJECT
+  Future<void> addLocalProject(AllprojectModel project) async {
+    await LocalProjectService.saveLocalProject(project);
+    final updatedProjects = [project, ...state.projects];
+    state = state.copyWith(projects: updatedProjects);
   }
 
   /// HANDLE ERROR

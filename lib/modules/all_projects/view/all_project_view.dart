@@ -6,6 +6,9 @@ import 'package:euroside/services/current_clock_session_service.dart';
 import 'package:euroside/screens/nav_bar/main_navigation_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
+import 'package:euroside/network/api_client.dart';
+import 'package:euroside/network/api_endpoint.dart';
 
 // ─── Design Tokens (shared with forms_screen.dart) ───────────────
 class _C {
@@ -155,6 +158,102 @@ class AllProjectListPage extends ConsumerStatefulWidget {
 
 class _AllProjectListPageState extends ConsumerState<AllProjectListPage> {
   String _search = '';
+  bool _showCreateProject = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkRegistrationStatus();
+  }
+
+  Future<void> _checkRegistrationStatus() async {
+    if (!Platform.isIOS) return;
+
+    try {
+      final response = await ApiClient.get(ApiEndpoints.registrationStatus);
+      final bool isRegistrationEnabled = response['registration_enabled'] == true;
+      final bool status = response['status'] == true;
+
+      if (mounted) {
+        setState(() {
+          _showCreateProject = isRegistrationEnabled || status;
+        });
+      }
+    } catch (e) {
+      print("Failed to fetch registration status: $e");
+    }
+  }
+
+  void _showCreateProjectDialog() {
+    final nameCtrl = TextEditingController();
+    final codeCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: _C.surface,
+          title: const Text("Create Project", style: TextStyle(color: _C.textPrimary)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: "Project Name"),
+                ),
+                TextField(
+                  controller: codeCtrl,
+                  decoration: const InputDecoration(labelText: "Project Code"),
+                ),
+                TextField(
+                  controller: descCtrl,
+                  decoration: const InputDecoration(labelText: "Description"),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: _C.accent),
+              onPressed: () {
+                final newProject = AllprojectModel(
+                  id: -(DateTime.now().millisecondsSinceEpoch % 100000),
+                  name: nameCtrl.text.trim(),
+                  code: codeCtrl.text.trim(),
+                  description: descCtrl.text.trim(),
+                  status: 'Active',
+                  priority: 'Medium',
+                  siteAddress: '',
+                  city: '',
+                  state: '',
+                  country: '',
+                  postalCode: '',
+                  latitude: '',
+                  longitude: '',
+                  progress: 0,
+                  startDate: DateTime.now().toIso8601String().split('T').first,
+                  endDate: '',
+                  budget: '',
+                  assignedWorkerCount: 0,
+                  jobCount: 0,
+                );
+
+                ref.read(AllprojectControllerProvider.notifier).addLocalProject(newProject);
+                Navigator.pop(context);
+              },
+              child: const Text("Create", style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   void _goToNavigationShell() {
     Navigator.of(context).pushAndRemoveUntil(
@@ -317,6 +416,14 @@ class _AllProjectListPageState extends ConsumerState<AllProjectListPage> {
               letterSpacing: -0.2,
             ),
           ),
+          actions: [
+            if (_showCreateProject)
+              IconButton(
+                onPressed: _showCreateProjectDialog,
+                icon: const Icon(Icons.add),
+                color: _C.textPrimary,
+              ),
+          ],
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(1),
             child: Container(height: 1, color: _C.border),
