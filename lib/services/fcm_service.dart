@@ -122,7 +122,7 @@ class FcmService {
         channelDescription: _androidChannel.description,
         importance: Importance.high,
         priority: Priority.high,
-        icon: '@mipmap/ic_launcher',
+        icon: 'ic_launcher',
       ),
       iOS: const DarwinNotificationDetails(
         presentAlert: true,
@@ -147,7 +147,7 @@ class FcmService {
     if (_localNotificationsReady) return;
 
     const initializationSettings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      android: AndroidInitializationSettings('ic_launcher'),
       iOS: DarwinInitializationSettings(),
     );
 

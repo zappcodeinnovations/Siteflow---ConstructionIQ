@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:euroside/modules/all_projects/controller/all_project_state.dart';
 import 'package:euroside/modules/all_projects/model/all_project_model.dart';
@@ -50,12 +51,18 @@ class AllProjectController extends StateNotifier<AllProjectState> {
       final response = await AllProjectService.getProjects();
 
       debugPrint("🔥 RESPONSE: $response");
+      try {
+        debugPrint("🔥 JSON RESPONSE: ${jsonEncode(response)}");
+      } catch (_) {}
 
       final List data = response["data"] ?? response["projects"] ?? response["results"] ?? [];
 
-      final projectModels = data
-          .map((e) => AllprojectModel.fromJson(e))
-          .toList();
+      final projectModels = data.map((e) {
+        final projectData = e is Map<String, dynamic> && e.containsKey('project') && e['project'] != null
+            ? e['project'] as Map<String, dynamic>
+            : e as Map<String, dynamic>;
+        return AllprojectModel.fromJson(projectData);
+      }).toList();
 
       final localProjects = await LocalProjectService.getLocalProjects();
       

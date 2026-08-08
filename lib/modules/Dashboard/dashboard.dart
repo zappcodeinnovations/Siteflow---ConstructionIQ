@@ -1230,59 +1230,71 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                                           ),
                                         ),
                                       if (_isClockedIn)
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.center,
-                                          children: [
-                                            _timeUnit(
-                                              _shiftDuration.inHours
-                                                  .toString()
-                                                  .padLeft(2, '0'),
-                                              "HOURS",
-                                              _isClockedIn,
+                                        Expanded(
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            alignment: Alignment.centerLeft,
+                                            child: Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.start,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.center,
+                                              children: [
+                                                _timeUnit(
+                                                  _shiftDuration.inHours
+                                                      .toString()
+                                                      .padLeft(2, '0'),
+                                                  "HOURS",
+                                                  _isClockedIn,
+                                                ),
+                                                _timeColon(_isClockedIn),
+                                                _timeUnit(
+                                                  (_shiftDuration.inMinutes % 60)
+                                                      .toString()
+                                                      .padLeft(2, '0'),
+                                                  "MINUTES",
+                                                  _isClockedIn,
+                                                ),
+                                                _timeColon(_isClockedIn),
+                                                _timeUnit(
+                                                  (_shiftDuration.inSeconds % 60)
+                                                      .toString()
+                                                      .padLeft(2, '0'),
+                                                  "SECONDS",
+                                                  _isClockedIn,
+                                                ),
+                                              ],
                                             ),
-                                            _timeColon(_isClockedIn),
-                                            _timeUnit(
-                                              (_shiftDuration.inMinutes % 60)
-                                                  .toString()
-                                                  .padLeft(2, '0'),
-                                              "MINUTES",
-                                              _isClockedIn,
-                                            ),
-                                            _timeColon(_isClockedIn),
-                                            _timeUnit(
-                                              (_shiftDuration.inSeconds % 60)
-                                                  .toString()
-                                                  .padLeft(2, '0'),
-                                              "SECONDS",
-                                              _isClockedIn,
-                                            ),
-                                          ],
+                                          ),
                                         )
                                       else
-                                        Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            const Text(
-                                              "--:--:--",
-                                              style: TextStyle(
-                                                fontSize: 28,
-                                                fontWeight: FontWeight.w700,
-                                                color: _ink,
-                                                letterSpacing: 1,
-                                              ),
+                                        Expanded(
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            alignment: Alignment.centerLeft,
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                const Text(
+                                                  "--:--:--",
+                                                  style: TextStyle(
+                                                    fontSize: 28,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: _ink,
+                                                    letterSpacing: 1,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 5),
+                                                Text(
+                                                  "NOT CLOCKED IN",
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    color: _ink2,
+                                                  ),
+                                                ),
+                                              ],
                                             ),
-                                            const SizedBox(height: 5),
-                                            Text(
-                                              "NOT CLOCKED IN",
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                color: _ink2,
-                                              ),
-                                            ),
-                                          ],
+                                          ),
                                         ),
                                     ],
                                   ),

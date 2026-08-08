@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:euroside/network/api_endpoint.dart';
 import 'package:euroside/services/fcm_service.dart';
 import 'package:euroside/services/token_services.dart';
+import 'package:euroside/services/local_project_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -244,7 +245,6 @@ class AuthService {
     return response;
   }
 
-  // Logout
   static Future<void> logout() async {
     try {
       await ApiClient.post(ApiEndpoints.logout, {});
@@ -252,6 +252,7 @@ class AuthService {
       debugPrint('[AuthService][logout] Backend logout skipped: $e');
     } finally {
       await TokenManager.clearAll();
+      await LocalProjectService.clearLocalProjects();
     }
   }
 

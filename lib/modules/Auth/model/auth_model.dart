@@ -62,7 +62,7 @@ class User {
       "password_changed",
     ]);
 
-    final requiresPasswordSetup = _firstBool(json, const [
+    bool? requiresPasswordSetup = _firstBool(json, const [
       "is_first_login",
       "first_login",
       "isFirstLogin",
@@ -90,7 +90,21 @@ class User {
       "temporaryPassword",
       "is_temporary_password",
       "isTemporaryPassword",
+      "needs_password_reset",
+      "require_password_reset",
+      "password_reset_needed",
+      "force_password_reset",
+      "is_temporary",
     ]);
+
+    if (requiresPasswordSetup != true) {
+      if (json.containsKey("last_login")) {
+        final ll = json["last_login"];
+        if (ll == null || (ll is String && ll.isEmpty)) {
+          requiresPasswordSetup = true;
+        }
+      }
+    }
 
     return User(
       id: json["id"],

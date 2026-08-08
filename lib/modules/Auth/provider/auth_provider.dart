@@ -3,5 +3,5 @@ import '../controller/auth_controller.dart';
 
 final authControllerProvider =
     StateNotifierProvider<AuthController, AuthState>((ref) {
-  return AuthController();
+  return AuthController(ref);
 });

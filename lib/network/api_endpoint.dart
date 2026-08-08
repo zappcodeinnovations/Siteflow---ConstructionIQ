@@ -1,7 +1,7 @@
 class ApiEndpoints {
   // static const String baseUrl = "http://168.144.78.224/api/";
   static const String baseUrl = "https://euroside.zappcode.in/api/";
-
+ 
   /// FORMS
   static String userFormHtml(int formId) => "userform/$formId/html/";
   static String selectedJobForms(int jobId) =>
@@ -60,7 +60,7 @@ class ApiEndpoints {
   static const String projectPhotos = "operative/images/";
   static String createProjectJob(int projectId) =>
       "operative/projects/$projectId/jobs/create/";
-  static const String allProjects = "projects/";
+  static const String allProjects = "operative/projects/";
 
   /// PROJECT DETAILS
   static String projectDetails(int id) => "projects/$id/";

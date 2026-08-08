@@ -129,15 +129,18 @@ class TokenManager {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
 
-    await prefs.remove(accessTokenKey);
-    await prefs.remove(refreshTokenKey);
-    await prefs.remove(userEmailKey);
-    await prefs.remove(clockedInProjectIdsKey);
-    await prefs.remove("clockInStartMillis");
-    await prefs.setBool("isClockedIn", false);
-    await prefs.remove("clockedInProjectId");
-    await prefs.remove("clockSessionId");
-    await prefs.remove("clockedInProjectName");
-    await prefs.setBool("isLoggedIn", false);
+    // Preserve important keys
+    final savedEmail = prefs.getString('saved_email');
+    final savedPassword = prefs.getString('saved_password');
+    final deviceId = prefs.getString('device_id');
+    final fcmToken = prefs.getString('fcm_token');
+
+    await prefs.clear();
+
+    // Restore them
+    if (savedEmail != null) await prefs.setString('saved_email', savedEmail);
+    if (savedPassword != null) await prefs.setString('saved_password', savedPassword);
+    if (deviceId != null) await prefs.setString('device_id', deviceId);
+    if (fcmToken != null) await prefs.setString('fcm_token', fcmToken);
   }
 }

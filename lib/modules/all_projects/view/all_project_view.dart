@@ -159,6 +159,7 @@ class AllProjectListPage extends ConsumerStatefulWidget {
 class _AllProjectListPageState extends ConsumerState<AllProjectListPage> {
   String _search = '';
   bool _showCreateProject = true;
+  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -269,37 +270,49 @@ class _AllProjectListPageState extends ConsumerState<AllProjectListPage> {
   }
 
   Future<void> _handleProjectTap(AllprojectModel project) async {
-    final session = await CurrentClockSessionService.fetchCurrentSession();
+    if (_isNavigating) return;
+    
+    if (mounted) {
+      setState(() => _isNavigating = true);
+    }
 
-    if (session.isClockedIn && session.data != null) {
-      final activeProjectId = session.data!.projectId;
+    try {
+      final session = await CurrentClockSessionService.fetchCurrentSession();
 
-      if (activeProjectId == project.id) {
+      if (session.isClockedIn && session.data != null) {
+        final activeProjectId = session.data!.projectId;
+
+        if (activeProjectId == project.id) {
+          if (!mounted) return;
+          await _openProjectDetails(project);
+          return;
+        }
+
         if (!mounted) return;
-        _openProjectDetails(project);
+        _showClockInActiveSnackbar();
         return;
       }
 
       if (!mounted) return;
-      _showClockInActiveSnackbar();
-      return;
-    }
 
-    if (!mounted) return;
-
-    final canOpenDetails = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ClockInScreen(
-          projectId: project.id,
-          projectName: project.name,
-          returnOnSuccess: true,
+      final canOpenDetails = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ClockInScreen(
+            projectId: project.id,
+            projectName: project.name,
+            returnOnSuccess: true,
+          ),
         ),
-      ),
-    );
+      );
 
-    if (canOpenDetails == true && mounted) {
-      _openProjectDetails(project);
+      if (canOpenDetails == true && mounted) {
+        await _openProjectDetails(project);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isNavigating = false);
+      }
     }
   }
 
@@ -366,8 +379,8 @@ class _AllProjectListPageState extends ConsumerState<AllProjectListPage> {
     );
   }
 
-  void _openProjectDetails(AllprojectModel project) {
-    Navigator.push(
+  Future<void> _openProjectDetails(AllprojectModel project) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => AllProjectDetailsPage(

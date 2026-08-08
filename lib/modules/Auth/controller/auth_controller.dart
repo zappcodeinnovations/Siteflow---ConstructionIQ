@@ -8,6 +8,11 @@ import 'package:euroside/services/token_services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../model/auth_model.dart';
+import 'package:euroside/modules/profile/provider/profile_provider.dart';
+import 'package:euroside/modules/all_projects/provider/all_project_provider.dart';
+import 'package:euroside/modules/notifications/provider/notification_provider.dart';
+import 'package:euroside/modules/announcements/provider/announcement_provider.dart';
+import 'package:euroside/modules/form/provider/form_provider.dart';
 
 class AuthState {
   final bool isLoading;
@@ -52,9 +57,10 @@ class AuthState {
 }
 
 class AuthController extends StateNotifier<AuthState> {
-  AuthController() : super(AuthState());
-
+  final Ref ref;
   Timer? _messageTimer;
+
+  AuthController(this.ref) : super(AuthState());
 
   void _scheduleClearMessages() {
     _messageTimer?.cancel();
@@ -496,6 +502,14 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> logout() async {
     _messageTimer?.cancel();
     await AuthService.logout();
+    
+    // Invalidate all major user data providers
+    ref.invalidate(profileControllerProvider);
+    ref.invalidate(AllprojectControllerProvider);
+    ref.invalidate(notificationsProvider);
+    ref.invalidate(announcementsProvider);
+    ref.invalidate(formsControllerProvider);
+
     state = AuthState();
   }
 

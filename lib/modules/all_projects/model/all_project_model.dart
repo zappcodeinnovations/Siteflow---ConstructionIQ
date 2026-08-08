@@ -52,8 +52,8 @@ class AllprojectModel {
   factory AllprojectModel.fromJson(Map<String, dynamic> json) {
     return AllprojectModel(
       id: _toInt(json['id']),
-      name: _toString(json['name']),
-      code: _toString(json['code']),
+      name: _toString(json['name'] ?? json['project_name']),
+      code: _toString(json['code'] ?? json['project_code']),
       description: _toString(json['description']),
       status: _toString(json['status']),
       priority: _toString(json['priority']),
@@ -178,8 +178,8 @@ class ProjectMeta {
   factory ProjectMeta.fromJson(Map<String, dynamic> json) {
     return ProjectMeta(
       id: AllprojectModel._toInt(json['id']),
-      name: AllprojectModel._toString(json['name']),
-      code: AllprojectModel._toString(json['code']),
+      name: AllprojectModel._toString(json['name'] ?? json['project_name']),
+      code: AllprojectModel._toString(json['code'] ?? json['project_code']),
       status: AllprojectModel._toString(json['status']),
     );
   }

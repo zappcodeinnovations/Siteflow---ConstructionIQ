@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/current_clock_session_service.dart';
 import '../../services/profile_services.dart';
 import '../../services/token_services.dart';
+import 'package:euroside/modules/Auth/model/auth_model.dart';
 
 enum AppStartStatus {
   loading,
@@ -82,8 +83,8 @@ class AppStartController extends StateNotifier<AppStartStatus> {
       }
 
       /// 🔐 CHECK PASSWORD STATUS
-      final bool isPasswordSet =
-          user["is_password_set"] == true;
+      final authUser = User.fromJson(user);
+      final bool isPasswordSet = authUser.isPasswordSet;
 
       debugPrint("🔐 IS PASSWORD SET => $isPasswordSet");
 
